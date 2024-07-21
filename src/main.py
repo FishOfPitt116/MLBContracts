@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 
-from models import linear_regression
-from runs import test_model_all_combo
+from models import linear_regression, support_vector_regression
+from runs import test_model_all_combo, find_best_model_combo
 
 DATASET_DIR = "../dataset"
 
@@ -46,20 +46,42 @@ if __name__ == "__main__":
     starting_pitching_data, relief_pitching_data = split_starters_relievers(pitching_data)
     
     # train and test logistic regression on both types of pitchers and print results
-    starter_results = test_model_all_combo(
+    starter_results_linear_regression = test_model_all_combo(
         "starter", 
         starting_pitching_data, 
         linear_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
         ["mse", "r2"]
     )
-    print(starter_results)
+    print(starter_results_linear_regression)
+    find_best_model_combo(starter_results_linear_regression, "r2")
 
-    reliever_results = test_model_all_combo(
+    reliever_results_linear_regression = test_model_all_combo(
         "reliever",
         relief_pitching_data,
         linear_regression,
         ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
         ["mse", "r2"]
     )
-    print(reliever_results)
+    print(reliever_results_linear_regression)
+    find_best_model_combo(reliever_results_linear_regression, "r2")
+
+    starter_results_svr = test_model_all_combo(
+        "starter", 
+        starting_pitching_data, 
+        support_vector_regression, 
+        ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(starter_results_svr)
+    find_best_model_combo(starter_results_svr, "r2")
+
+    reliever_results_svr = test_model_all_combo(
+        "reliever",
+        relief_pitching_data,
+        support_vector_regression,
+        ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(reliever_results_svr)
+    find_best_model_combo(reliever_results_svr, "r2")

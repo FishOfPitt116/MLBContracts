@@ -20,3 +20,9 @@ def test_model_all_combo(label, data, model, predictors, metrics):
         results = results._append(record, ignore_index=True)
     results.to_csv(f"../model_results/{label}_{model.__name__}.csv")
     return results
+
+def find_best_model_combo(results, metric, high_val_better=True):
+    if high_val_better:
+        print(results.iloc[results[metric].idxmax()])
+    else:
+        print(results.iloc[results[metric].idxmin()])
