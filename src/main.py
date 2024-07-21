@@ -1,27 +1,8 @@
-# from sklearn import svm
-
-# class Example:
-#     def __init__(self, a1, a2, a3):
-#         self.attr1 = a1
-#         self.attr2 = a2
-#         self.attr3 = a3
-
-#     def data_to_list(self):
-#         return [self.attr1, self.attr2, self.attr3]
-
-# e1 = Example(0, 0, 0)
-# e2 = Example(2, 2, 2)
-# X = [e1.data_to_list(), e2.data_to_list()]
-# y = [0.5, 2.5]
-# regression = svm.SVR()
-# regression.fit(X, y)
-# print(regression.predict([[1, 1, 1]]))
-
-# def contract(position, age, service_time, stats):
-#     pass
-
 import os
 import pandas as pd
+
+from models import linear_regression
+from runs import test_model_all_combo
 
 DATASET_DIR = "../dataset"
 
@@ -50,7 +31,35 @@ def get_merged_dfs():
 
     return batting_data, pitching_data
 
+
+# threshold = the percent of games a starter has to start to be considered a starter
+def split_starters_relievers(data, threshold=0.85):
+    sp = data[data["G"]*threshold <= data["GS"]]
+    rp = data[data["G"]*threshold > data["GS"]]
+    return sp, rp
+
 if __name__ == "__main__":
+    # generate batting and pitching data
     batting_data, pitching_data = get_merged_dfs()
-    print(batting_data)
-    print(pitching_data)
+
+    # split pitching dataset between starters and relievers
+    starting_pitching_data, relief_pitching_data = split_starters_relievers(pitching_data)
+    
+    # train and test logistic regression on both types of pitchers and print results
+    starter_results = test_model_all_combo(
+        "starter", 
+        starting_pitching_data, 
+        linear_regression, 
+        ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(starter_results)
+
+    reliever_results = test_model_all_combo(
+        "reliever",
+        relief_pitching_data,
+        linear_regression,
+        ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(reliever_results)
