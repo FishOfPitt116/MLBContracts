@@ -2,11 +2,11 @@ import os
 import pandas as pd
 import re
 
-DIRECTORY = "../data/stats_data"
-FINAL_BATTING_DATASET = "../dataset/batting_stats.csv"
-FINAL_PITCHING_DATASET = "../dataset/pitching_stats.csv"
+DIRECTORY = "data/stats_data"
+FINAL_BATTING_DATASET = "dataset/batting_stats.csv"
+FINAL_PITCHING_DATASET = "dataset/pitching_stats.csv"
 
-contracts_df = pd.read_csv("../dataset/contracts.csv")
+contracts_df = pd.read_csv("dataset/contracts.csv")
 
 batting_stats_df = pd.DataFrame(columns=['Index', 'G', 'PA', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'SB', 'CS', 'BB', 'SO', 'BA', 'OBP', 'SLG', 'OPS', 'OPS+', 'TB', 'GDP', 'HBP', 'SH', 'SF', 'IBB'])
 pitching_stats_df = pd.DataFrame(columns=['Index', 'W', 'L', 'W-L%', 'ERA', 'G', 'GS', 'GF', 'CG', 'SHO', 'SV', 'IP', 'H', 'R', 'ER', 'HR', 'BB', 'IBB', 'SO', 'HBP', 'BK', 'WP', 'BF', 'ERA+', 'FIP', 'WHIP', 'H9', 'HR9', 'BB9', 'SO9', 'SO/W'])

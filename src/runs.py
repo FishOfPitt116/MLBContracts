@@ -1,6 +1,10 @@
+import os
 import pandas as pd
 
-def test_model_all_combo(label, data, model, predictors, metrics):
+def test_model_all_combo(label, data, model, predictors, metrics, override=False):
+    path = f"model_results/{label}_{model.__name__}.csv"
+    if not override and os.path.exists(path):
+        return pd.read_csv(path)
     results = pd.DataFrame(columns=predictors + metrics)
     n = len(predictors)
     for j in range(pow(2, n)):
@@ -18,7 +22,7 @@ def test_model_all_combo(label, data, model, predictors, metrics):
         for metric in metrics:
             record[metric] = stats[metric]
         results = results._append(record, ignore_index=True)
-    results.to_csv(f"../model_results/{label}_{model.__name__}.csv")
+    results.to_csv(path)
     return results
 
 def find_best_model_combo(results, metric, high_val_better=True):

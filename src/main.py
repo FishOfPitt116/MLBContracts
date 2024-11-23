@@ -4,7 +4,7 @@ import pandas as pd
 from models import linear_regression, support_vector_regression
 from runs import test_model_all_combo, find_best_model_combo
 
-DATASET_DIR = "../dataset"
+DATASET_DIR = "dataset"
 
 BATTING_STATS = pd.read_csv(os.path.join(DATASET_DIR, "batting_stats.csv"))
 CONTRACTS = pd.read_csv(os.path.join(DATASET_DIR, "contracts.csv"))
@@ -66,6 +66,16 @@ if __name__ == "__main__":
     print(reliever_results_linear_regression)
     find_best_model_combo(reliever_results_linear_regression, "r2")
 
+    position_results_linear_regression = test_model_all_combo(
+        "position",
+        batting_data,
+        linear_regression,
+        ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
+        ["mse", "r2"]
+    )
+    print(position_results_linear_regression)
+    find_best_model_combo(position_results_linear_regression, "r2")
+
     starter_results_svr = test_model_all_combo(
         "starter", 
         starting_pitching_data, 
@@ -85,3 +95,13 @@ if __name__ == "__main__":
     )
     print(reliever_results_svr)
     find_best_model_combo(reliever_results_svr, "r2")
+
+    position_results_svr = test_model_all_combo(
+        "position",
+        batting_data,
+        support_vector_regression,
+        ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
+        ["mse", "r2"]
+    )
+    print(position_results_svr)
+    find_best_model_combo(position_results_svr, "r2")

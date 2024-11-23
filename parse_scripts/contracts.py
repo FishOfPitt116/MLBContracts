@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 
-DIRECTORY = "../data/contract_data"
-FINAL_DATASET = "../dataset/contracts.csv"
+DIRECTORY = "data/contract_data"
+FINAL_DATASET = "dataset/contracts.csv"
 
 contracts_df = pd.DataFrame(columns=["first_name", "last_name", "team", "year", "position", "age", "service time", "agent", "value"])
 
