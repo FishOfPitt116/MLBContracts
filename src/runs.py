@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 def test_model_all_combo(label, data, model, predictors, metrics, override=False):
-    path = f"model_results/{label}_{model.__name__}.csv"
+    path = f"model_results/{label}_{model.__name__}_norm.csv"
     if not override and os.path.exists(path):
         return pd.read_csv(path)
     results = pd.DataFrame(columns=predictors + metrics)
@@ -22,6 +22,32 @@ def test_model_all_combo(label, data, model, predictors, metrics, override=False
         for metric in metrics:
             record[metric] = stats[metric]
         results = results._append(record, ignore_index=True)
+    results.to_csv(path)
+    return results
+
+def test_model_all_combo_with_alpha(label, data, model, predictors, metrics, override=False):
+    path = f"model_results/{label}_{model.__name__}_norm.csv"
+    if not override and os.path.exists(path):
+        return pd.read_csv(path)
+    results = pd.DataFrame(columns=predictors + metrics)
+    n = len(predictors)
+    for alpha in range(1, 10):
+        for j in range(pow(2, n)):
+            record = {}
+            run_predictors = []
+            for k in range(n):
+                if ((1 << k)) & j != 0:
+                    run_predictors.append(predictors[k])
+                    record[predictors[k]] = 1
+                else:
+                    record[predictors[k]] = 0
+            if len(run_predictors) == 0:
+                continue
+            record['alpha'] = alpha*0.1
+            stats = model(data, run_predictors, "value", alpha=alpha*0.1)
+            for metric in metrics:
+                record[metric] = stats[metric]
+            results = results._append(record, ignore_index=True)
     results.to_csv(path)
     return results
 

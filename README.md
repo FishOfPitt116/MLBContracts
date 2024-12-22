@@ -24,3 +24,8 @@ Columns:
 ### Model Building
 
 1) The first step in model building is to divide players based on their positions on the field. Players who play the same position generally get paid on a similar scale, and players who play different positions don't get paid the same amount (center fielders and relief pitchers get paid different amounts on average).
+
+#### Best Models So Far:
+Starting Pitchers - SVR with GS, service time, ERA
+Relief Pitchers - SVR with G, service time, SV, ERA, SO
+Position Players - Linear Regression with G, service time, AB, HR, SB

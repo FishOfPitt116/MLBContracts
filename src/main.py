@@ -1,8 +1,9 @@
 import os
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 
-from models import linear_regression, support_vector_regression
-from runs import test_model_all_combo, find_best_model_combo
+from models import linear_regression, support_vector_regression, lasso_regression
+from runs import test_model_all_combo, test_model_all_combo_with_alpha, find_best_model_combo
 
 DATASET_DIR = "dataset"
 
@@ -31,12 +32,17 @@ def get_merged_dfs():
 
     return batting_data, pitching_data
 
-
 # threshold = the percent of games a starter has to start to be considered a starter
 def split_starters_relievers(data, threshold=0.85):
     sp = data[data["G"]*threshold <= data["GS"]]
     rp = data[data["G"]*threshold > data["GS"]]
     return sp, rp
+
+def normalize_dataframe(df):
+    scaler = MinMaxScaler()
+    numeric_cols = df.select_dtypes(include=['number']).columns
+    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    return df
 
 if __name__ == "__main__":
     # generate batting and pitching data
@@ -44,6 +50,11 @@ if __name__ == "__main__":
 
     # split pitching dataset between starters and relievers
     starting_pitching_data, relief_pitching_data = split_starters_relievers(pitching_data)
+
+    # normalize dataframes
+    batting_data = normalize_dataframe(batting_data)
+    starting_pitching_data = normalize_dataframe(starting_pitching_data)
+    relief_pitching_data = normalize_dataframe(relief_pitching_data)
     
     # train and test logistic regression on both types of pitchers and print results
     starter_results_linear_regression = test_model_all_combo(
@@ -105,3 +116,33 @@ if __name__ == "__main__":
     )
     print(position_results_svr)
     find_best_model_combo(position_results_svr, "r2")
+
+    starter_results_lasso = test_model_all_combo_with_alpha(
+        "starter", 
+        starting_pitching_data, 
+        lasso_regression, 
+        ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(starter_results_lasso)
+    find_best_model_combo(starter_results_lasso, "r2")
+
+    reliever_results_lasso = test_model_all_combo_with_alpha(
+        "reliever",
+        relief_pitching_data,
+        lasso_regression,
+        ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
+        ["mse", "r2"]
+    )
+    print(reliever_results_lasso)
+    find_best_model_combo(reliever_results_lasso, "r2")
+
+    position_results_lasso = test_model_all_combo_with_alpha(
+        "position",
+        batting_data,
+        lasso_regression,
+        ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
+        ["mse", "r2"]
+    )
+    print(position_results_lasso)
+    find_best_model_combo(position_results_lasso, "r2")
