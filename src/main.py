@@ -62,87 +62,69 @@ if __name__ == "__main__":
         starting_pitching_data, 
         linear_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(starter_results_linear_regression)
-    find_best_model_combo(starter_results_linear_regression, "r2")
 
     reliever_results_linear_regression = test_model_all_combo(
         "reliever",
         relief_pitching_data,
         linear_regression,
         ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(reliever_results_linear_regression)
-    find_best_model_combo(reliever_results_linear_regression, "r2")
 
     position_results_linear_regression = test_model_all_combo(
         "position",
         batting_data,
         linear_regression,
         ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(position_results_linear_regression)
-    find_best_model_combo(position_results_linear_regression, "r2")
 
     starter_results_svr = test_model_all_combo(
         "starter", 
         starting_pitching_data, 
         support_vector_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(starter_results_svr)
-    find_best_model_combo(starter_results_svr, "r2")
 
     reliever_results_svr = test_model_all_combo(
         "reliever",
         relief_pitching_data,
         support_vector_regression,
         ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(reliever_results_svr)
-    find_best_model_combo(reliever_results_svr, "r2")
 
     position_results_svr = test_model_all_combo(
         "position",
         batting_data,
         support_vector_regression,
         ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(position_results_svr)
-    find_best_model_combo(position_results_svr, "r2")
 
     starter_results_lasso = test_model_all_combo_with_alpha(
         "starter", 
         starting_pitching_data, 
         lasso_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(starter_results_lasso)
-    find_best_model_combo(starter_results_lasso, "r2")
 
     reliever_results_lasso = test_model_all_combo_with_alpha(
         "reliever",
         relief_pitching_data,
         lasso_regression,
         ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(reliever_results_lasso)
-    find_best_model_combo(reliever_results_lasso, "r2")
 
     position_results_lasso = test_model_all_combo_with_alpha(
         "position",
         batting_data,
         lasso_regression,
         ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
-        ["mse", "r2"]
+        ["mse", "r2", "model"]
     )
-    print(position_results_lasso)
-    find_best_model_combo(position_results_lasso, "r2")

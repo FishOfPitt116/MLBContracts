@@ -1,10 +1,14 @@
+from models import read_model_from_file, write_model_to_file
 import os
 import pandas as pd
 
 def test_model_all_combo(label, data, model, predictors, metrics, override=False):
     path = f"model_results/{label}_{model.__name__}_norm.csv"
+    best_model_path = f"best_model/{label}_{model.__name__}.pkl"
+    if not os.path.exists("best_model"):
+        os.mkdir("best_model")
     if not override and os.path.exists(path):
-        return pd.read_csv(path)
+        return read_model_from_file(best_model_path)
     results = pd.DataFrame(columns=predictors + metrics)
     n = len(predictors)
     for j in range(pow(2, n)):
@@ -22,13 +26,16 @@ def test_model_all_combo(label, data, model, predictors, metrics, override=False
         for metric in metrics:
             record[metric] = stats[metric]
         results = results._append(record, ignore_index=True)
-    results.to_csv(path)
-    return results
+    best_model_index = find_best_model_combo(results, "r2")
+    results.drop(columns=["model"]).to_csv(path)
+    write_model_to_file(results.iloc[best_model_index]["model"], best_model_path)
+    return results.iloc[best_model_index]["model"]
 
 def test_model_all_combo_with_alpha(label, data, model, predictors, metrics, override=False):
     path = f"model_results/{label}_{model.__name__}_norm.csv"
+    best_model_path = f"best_model/{label}_{model.__name__}.pkl"
     if not override and os.path.exists(path):
-        return pd.read_csv(path)
+        return read_model_from_file(best_model_path)
     results = pd.DataFrame(columns=predictors + metrics)
     n = len(predictors)
     for alpha in range(1, 10):
@@ -48,11 +55,15 @@ def test_model_all_combo_with_alpha(label, data, model, predictors, metrics, ove
             for metric in metrics:
                 record[metric] = stats[metric]
             results = results._append(record, ignore_index=True)
-    results.to_csv(path)
-    return results
+    best_model_index = find_best_model_combo(results, "r2")
+    results.drop(columns=["model"]).to_csv(path)
+    write_model_to_file(results.iloc[best_model_index]["model"], best_model_path)
+    return results.iloc[best_model_index]["model"]
 
 def find_best_model_combo(results, metric, high_val_better=True):
     if high_val_better:
         print(results.iloc[results[metric].idxmax()])
+        return results[metric].idxmax()
     else:
         print(results.iloc[results[metric].idxmin()])
+        return results[metric].idxmin()
