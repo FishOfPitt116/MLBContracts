@@ -26,6 +26,9 @@ Columns:
 1) The first step in model building is to divide players based on their positions on the field. Players who play the same position generally get paid on a similar scale, and players who play different positions don't get paid the same amount (center fielders and relief pitchers get paid different amounts on average).
 
 #### Best Models So Far:
-Starting Pitchers - SVR with GS, service time, ERA (starter_support_vector_regression.pkl)
-Relief Pitchers - SVR with G, service time, SV, ERA, SO (reliever_support_vector_regression.pkl)
-Position Players - Linear Regression with G, service time, AB, HR, SB (position_linear_regression.pkl)
+
+| Player Type       | Model Type           | Features                                  | File Name                                  | MSE   | R²     |
+|-------------------|----------------------|------------------------------------------|-------------------------------------------|-------|--------|
+| Starting Pitchers | SVR                 | GS, service time, ERA                    | starter_support_vector_regression.pkl     | 0.017 | 0.5375 |
+| Relief Pitchers   | SVR                 | G, service time, SV, ERA, SO             | reliever_support_vector_regression.pkl    | 0.014 | 0.5947 |
+| Position Players  | Linear Regression   | G, service time, AB, HR, SB              | position_linear_regression.pkl            | 0.011 | 0.6796 |
