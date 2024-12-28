@@ -42,7 +42,7 @@ def normalize_dataframe(df):
     scaler = MinMaxScaler()
     numeric_cols = df.select_dtypes(include=['number']).columns
     df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
-    return df
+    return df, scaler
 
 if __name__ == "__main__":
     # generate batting and pitching data
@@ -52,9 +52,9 @@ if __name__ == "__main__":
     starting_pitching_data, relief_pitching_data = split_starters_relievers(pitching_data)
 
     # normalize dataframes
-    batting_data = normalize_dataframe(batting_data)
-    starting_pitching_data = normalize_dataframe(starting_pitching_data)
-    relief_pitching_data = normalize_dataframe(relief_pitching_data)
+    batting_data, batting_scaler = normalize_dataframe(batting_data)
+    starting_pitching_data, starting_pitching_scaler = normalize_dataframe(starting_pitching_data)
+    relief_pitching_data, relief_pitching_scaler = normalize_dataframe(relief_pitching_data)
     
     # train and test logistic regression on both types of pitchers and print results
     starter_results_linear_regression = test_model_all_combo(
