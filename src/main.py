@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
@@ -11,21 +12,27 @@ BATTING_STATS = pd.read_csv(os.path.join(DATASET_DIR, "batting_stats.csv"))
 CONTRACTS = pd.read_csv(os.path.join(DATASET_DIR, "contracts.csv"))
 PITCHING_STATS = pd.read_csv(os.path.join(DATASET_DIR, "pitching_stats.csv"))
 
-def filter_by_position(pos):
+def filter_by_position(pos: str) -> pd.DataFrame:
     return CONTRACTS.query(f'position == \"{pos}\"')
 
-def get_merged_dfs():
+def get_merged_dfs() -> Tuple[pd.DataFrame, pd.DataFrame]:
     batting_contracts = pd.DataFrame(columns=CONTRACTS.columns)
     pitching_contracts = pd.DataFrame(columns=CONTRACTS.columns)
 
     for position in CONTRACTS["position"].unique():
         pos_df = filter_by_position(position)
         if position in ["rhp-s", "lhp-s", "rhp-c", "lhp-c", "rhp", "lhp"]:
-            pitching_contracts = pitching_contracts._append(pos_df, ignore_index=False)
+            if pitching_contracts.empty and not pos_df.empty:
+                pitching_contracts = pos_df
+            elif not pos_df.empty:
+                pitching_contracts = pd.concat([pitching_contracts, pos_df], ignore_index=True)
         elif "lhp" in position or "rhp" in position:
             pass # shohei case
         else:
-            batting_contracts = batting_contracts._append(pos_df, ignore_index=False)
+            if batting_contracts.empty and not pos_df.empty:
+                batting_contracts = pos_df
+            elif not pos_df.empty:
+                batting_contracts = pd.concat([batting_contracts, pos_df], ignore_index=True)
 
     batting_data = pd.merge(batting_contracts, BATTING_STATS, left_on="Unnamed: 0", right_on="Index")
     pitching_data = pd.merge(pitching_contracts, PITCHING_STATS, left_on="Unnamed: 0", right_on="Index")
@@ -33,15 +40,16 @@ def get_merged_dfs():
     return batting_data, pitching_data
 
 # threshold = the percent of games a starter has to start to be considered a starter
-def split_starters_relievers(data, threshold=0.85):
+def split_starters_relievers(data: pd.DataFrame, threshold: float = 0.85) -> Tuple[pd.DataFrame, pd.DataFrame]:
     sp = data[data["G"]*threshold <= data["GS"]]
     rp = data[data["G"]*threshold > data["GS"]]
     return sp, rp
 
-def normalize_dataframe(df):
+def normalize_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, MinMaxScaler]:
     scaler = MinMaxScaler()
     numeric_cols = df.select_dtypes(include=['number']).columns
-    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    df.loc[:, numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    print(df)
     return df, scaler
 
 if __name__ == "__main__":
@@ -105,26 +113,27 @@ if __name__ == "__main__":
         ["mse", "r2", "model"]
     )
 
-    starter_results_lasso = test_model_all_combo_with_alpha(
-        "starter", 
-        starting_pitching_data, 
-        lasso_regression, 
-        ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
-        ["mse", "r2", "model"]
-    )
+    # NOTE: Lasso models are now not built, as their R2 and MSE are considerably worse than the other models
+    # starter_results_lasso = test_model_all_combo_with_alpha(
+    #     "starter", 
+    #     starting_pitching_data, 
+    #     lasso_regression, 
+    #     ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
+    #     ["mse", "r2", "model"]
+    # )
 
-    reliever_results_lasso = test_model_all_combo_with_alpha(
-        "reliever",
-        relief_pitching_data,
-        lasso_regression,
-        ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
-        ["mse", "r2", "model"]
-    )
+    # reliever_results_lasso = test_model_all_combo_with_alpha(
+    #     "reliever",
+    #     relief_pitching_data,
+    #     lasso_regression,
+    #     ["G", "age", "service time", "SV", "ERA", "WHIP", "SO"],
+    #     ["mse", "r2", "model"]
+    # )
 
-    position_results_lasso = test_model_all_combo_with_alpha(
-        "position",
-        batting_data,
-        lasso_regression,
-        ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
-        ["mse", "r2", "model"]
-    )
+    # position_results_lasso = test_model_all_combo_with_alpha(
+    #     "position",
+    #     batting_data,
+    #     lasso_regression,
+    #     ["G", "age", "service time", "AB", "H", "2B", "3B", "HR", "RBI", "SB", "CS", "BB", "SO", "BA", "OBP", "SLG", "OPS"],
+    #     ["mse", "r2", "model"]
+    # )
