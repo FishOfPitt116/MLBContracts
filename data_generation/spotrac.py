@@ -21,20 +21,23 @@ def fetch_spotrac_data(url: str) -> BeautifulSoup:
         return BeautifulSoup(response.text, "html.parser")
     return None
 
+def sanitize_string(s: str) -> str:
+    return s.replace("\n", "").strip()
+
 def get_table_headers(table: Tag) -> List[str]:
     print( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
     return { sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() : i for i, header in enumerate(table.find("thead").find_all("th")) }
-
-def sanitize_string(s: str) -> str:
-    return s.replace("\n", "").strip()
 
 def extract_player_data(row: Tag, headers: Dict[str, int]) -> Player:
     columns = row.find_all('td')
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
     link_id = spotrac_link.split("/")[-1]
+    player_id = f"{name[1]}_{link_id}"
+    if player_id in PLAYER_OBJECT_CACHE:
+        return PLAYER_OBJECT_CACHE[player_id]
     return Player(
-        player_id=f"{name[1]}_{link_id}",
+        player_id=player_id,
         first_name=name[0],
         last_name=name[1],
         position=sanitize_string(columns[headers['pos']].get_text()),
