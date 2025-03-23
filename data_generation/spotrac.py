@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from pybaseball import playerid_lookup
 import requests
 from typing import Dict, List, Tuple
 
@@ -24,12 +25,30 @@ def fetch_spotrac_data(url: str) -> BeautifulSoup:
 def sanitize_string(s: str) -> str:
     return s.replace("\n", "").strip()
 
+# BUG: players with names such as "J.D." or "J.A." or "C.J." will not be found in the playerid_lookup function
+# BUG: players with accents in their names need to be added manually 
 def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
     link_id = spotrac_link.split("/")[-1]
 
     return f"{name[1]}_{link_id}"
+
+def get_fangraphs_id(first_name, last_name) -> int:
+    id_df = playerid_lookup(last_name, first_name)
+    if len(id_df) == 1:
+        return id_df["key_fangraphs"][0]
+    if len(id_df) == 0:
+        print(f"Could not find player with name {first_name} {last_name}. Please provide first and last name.\nIf you do not know the player's name, please enter 'exit' to not create this player object.")
+        first_name = input("First Name: ")
+        if first_name.lower() == "exit":
+            return -1
+        last_name = input("Last Name: ")
+        return get_fangraphs_id(first_name, last_name)
+    print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below.")
+    print(id_df)
+    index = int(input("Enter the index number of the correct player: "))
+    return id_df["key_fangraphs"][index]
 
 def get_table_headers(table: Tag) -> List[str]:
     print( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
@@ -39,16 +58,26 @@ def extract_player_data(row: Tag, headers: Dict[str, int]) -> Player:
     columns = row.find_all('td')
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
     player_id = get_player_id(columns, headers)
-    spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
+
     if player_id in PLAYER_OBJECT_CACHE:
         return PLAYER_OBJECT_CACHE[player_id]
+    
+    fangraphs_id = get_fangraphs_id(name[0], name[1])
+    if fangraphs_id == -1:
+        return None
+
+    spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
+    player_soup = fetch_spotrac_data(spotrac_link)
     # TODO: check spotrac link for birthday
+    birthday = None
+
     return Player(
         player_id=player_id,
+        fangraphs_id=fangraphs_id,
         first_name=name[0],
         last_name=name[1],
         position=sanitize_string(columns[headers['pos']].get_text()),
-        birth_date=None,  # TODO: fill in
+        birth_date=birthday,
         spotrac_link=spotrac_link,
         baseball_reference_link=None
     )
@@ -82,6 +111,8 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
     print(headers)
     for row in table.find("tbody").find_all("tr"):
         player = extract_player_data(row, headers)
+        if not player:
+            continue
         if player.player_id not in PLAYER_OBJECT_CACHE:
             PLAYER_OBJECT_CACHE[player.player_id] = player
         salary = extract_salary_data(row, player, year, salary_type, headers)
@@ -107,8 +138,8 @@ def get_free_agent_records(year: int) -> Tuple[List[Player], List[Salary]]:
     extensions = get_records(VETERAN_EXTENSIONS_URL.format(year=year), year, "free-agent")
     return (contracts[0]+extensions[0], contracts[1]+extensions[1])
 
-def main():
-    for year in range(2011, 2026):
+def main(start_year, end_year=None):
+    for year in range(start_year, end_year+1 if end_year else start_year+1):
         pre_arb_players, pre_arb_salaries = get_pre_arb_records(year)
         arb_players, arb_salaries = get_arb_records(year)
         free_agent_players, free_agent_salaries = get_free_agent_records(year)
@@ -123,4 +154,4 @@ def main():
         print(f"Year {year} Free Agent Players: {len(free_agent_players)}")
 
 if __name__ == "__main__":
-    main()
+    main(2011)

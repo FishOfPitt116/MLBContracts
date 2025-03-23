@@ -4,6 +4,7 @@ from datetime import datetime
 @dataclass
 class Player:
     player_id: str # PK
+    fangraphs_id: int
     first_name: str
     last_name: str
     position: str
