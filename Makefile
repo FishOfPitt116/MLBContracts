@@ -6,6 +6,10 @@ PYTHON = PYTHONPATH=$(shell pwd) python3
 # TEST_DIRS = tst/parse
 MAIN_FILE = src/main.py
 PREDICT_FILE = src/predict.py
+# TODO: change this to the actual main dataset generation file once stats are added
+DATASET_FILE = data_generation/spotrac.py
+
+.PHONY: build run predict dataset
 
 build: run
 
@@ -21,3 +25,7 @@ run:
 predict:
 	@echo "Running prediction using best models..."
 	$(PYTHON) $(PREDICT_FILE)
+
+dataset:
+	@echo "Assembling dataset..."
+	$(PYTHON) $(DATASET_FILE)

@@ -5,6 +5,7 @@ import requests
 from typing import Dict, List, Tuple
 
 from records import Player, Salary
+from save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
 
 PRE_ARB_URL = "https://www.spotrac.com/mlb/pre-arbitration/_/year/{year}/"
 ARB_URL = "https://www.spotrac.com/mlb/arbitration/_/year/{year}"
@@ -14,7 +15,8 @@ PRE_ARB_EXTENSIONS_URL = "https://www.spotrac.com/mlb/contracts/extensions/_/yea
 ARB_EXTENSIONS_URL = "https://www.spotrac.com/mlb/contracts/extensions/_/year/{year}/type/arbitration-extension/"
 VETERAN_EXTENSIONS_URL = "https://www.spotrac.com/mlb/contracts/extensions/_/year/{year}/type/extension/"
 
-PLAYER_OBJECT_CACHE = {}
+PLAYER_OBJECT_CACHE = {player.player_id: player for player in read_players_from_file()}
+CONTRACT_OBJECT_CACHE = {contract.contract_id: contract for contract in read_contracts_from_file()}
 
 def fetch_spotrac_data(url: str) -> BeautifulSoup:
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -25,8 +27,6 @@ def fetch_spotrac_data(url: str) -> BeautifulSoup:
 def sanitize_string(s: str) -> str:
     return s.replace("\n", "").strip()
 
-# BUG: players with names such as "J.D." or "J.A." or "C.J." will not be found in the playerid_lookup function
-# BUG: players with accents in their names need to be added manually 
 def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
@@ -34,7 +34,11 @@ def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
 
     return f"{name[1]}_{link_id}"
 
+# BUG: players with accents in their names need to be added manually 
 def get_fangraphs_id(first_name, last_name) -> int:
+    # Handle names with periods by adding a space after the first period
+    if "." in first_name:
+        first_name = first_name.replace(".", ". ").strip()
     id_df = playerid_lookup(last_name, first_name)
     if len(id_df) == 1:
         return id_df["key_fangraphs"][0]
@@ -115,7 +119,12 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
             continue
         if player.player_id not in PLAYER_OBJECT_CACHE:
             PLAYER_OBJECT_CACHE[player.player_id] = player
+
         salary = extract_salary_data(row, player, year, salary_type, headers)
+        if not salary:
+            continue
+        if salary.contract_id not in CONTRACT_OBJECT_CACHE:
+            CONTRACT_OBJECT_CACHE[salary.contract_id] = salary
 
         players.append(PLAYER_OBJECT_CACHE[player.player_id])
         if salary:
@@ -143,15 +152,13 @@ def main(start_year, end_year=None):
         pre_arb_players, pre_arb_salaries = get_pre_arb_records(year)
         arb_players, arb_salaries = get_arb_records(year)
         free_agent_players, free_agent_salaries = get_free_agent_records(year)
-        print(pre_arb_players)
-        print(pre_arb_salaries)
-        print(arb_players)
-        print(arb_salaries)
-        print(free_agent_players)
-        print(free_agent_salaries)
         print(f"Year {year} Pre-Arb Players: {len(pre_arb_players)}")
         print(f"Year {year} Arb Players: {len(arb_players)}")
         print(f"Year {year} Free Agent Players: {len(free_agent_players)}")
+        print(f"Writing {year} records to file...")
+        write_players_to_file(pre_arb_players + arb_players + free_agent_players)
+        write_contracts_to_file(pre_arb_salaries + arb_salaries + free_agent_salaries)
+        print(f"Finished writing {year} records to file.")
 
 if __name__ == "__main__":
     main(2011)

@@ -1,4 +1,5 @@
 import csv
+import os
 from datetime import datetime
 from typing import List
 
@@ -8,27 +9,35 @@ PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
 
 def write_players_to_file(players: List[Player]):
-    with open(PLAYERS_FILE, mode="w", newline="") as file:
+    existing_players = {player.player_id: player for player in read_players_from_file()}
+    file_exists = os.path.isfile(PLAYERS_FILE)
+    with open(PLAYERS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["player_id", "first_name", "last_name", "position", "birth_date", "spotrac_link", "baseball_reference_link"])
+        if not file_exists:
+            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "birth_date", "spotrac_link", "baseball_reference_link"])
         for player in players:
-            writer.writerow([
-                player.player_id,
-                player.first_name,
-                player.last_name,
-                player.position,
-                player.birth_date.strftime("%Y-%m-%d") if player.birth_date else "",
-                player.spotrac_link or "",
-                player.baseball_reference_link or ""
-            ])
+            if player.player_id not in existing_players:
+                writer.writerow([
+                    player.player_id,
+                    player.fangraphs_id,
+                    player.first_name,
+                    player.last_name,
+                    player.position,
+                    player.birth_date.strftime("%Y-%m-%d") if player.birth_date else "",
+                    player.spotrac_link or "",
+                    player.baseball_reference_link or ""
+                ])
 
 def read_players_from_file() -> List[Player]:
     players = []
+    if not os.path.isfile(PLAYERS_FILE):
+        return players
     with open(PLAYERS_FILE, mode="r", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
             players.append(Player(
                 player_id=row["player_id"],
+                fangraphs_id=row["fangraphs_id"],
                 first_name=row["first_name"],
                 last_name=row["last_name"],
                 position=row["position"],
@@ -39,23 +48,29 @@ def read_players_from_file() -> List[Player]:
     return players
 
 def write_contracts_to_file(contracts: List[Salary]):
-    with open(CONTRACTS_FILE, mode="w", newline="") as file:
+    existing_contracts = {contract.contract_id: contract for contract in read_contracts_from_file()}
+    file_exists = os.path.isfile(CONTRACTS_FILE)
+    with open(CONTRACTS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["contract_id", "player_id", "age", "service_time", "year", "duration", "value", "type"])
+        if not file_exists:
+            writer.writerow(["contract_id", "player_id", "age", "service_time", "year", "duration", "value", "type"])
         for contract in contracts:
-            writer.writerow([
-                contract.contract_id,
-                contract.player_id,
-                contract.age or -1,
-                contract.service_time or -1,
-                contract.year,
-                contract.duration,
-                contract.value,
-                contract.type
-            ])
+            if contract.contract_id not in existing_contracts:
+                writer.writerow([
+                    contract.contract_id,
+                    contract.player_id,
+                    contract.age or -1,
+                    contract.service_time or -1,
+                    contract.year,
+                    contract.duration,
+                    contract.value,
+                    contract.type
+                ])
 
 def read_contracts_from_file() -> List[Salary]:
     contracts = []
+    if not os.path.isfile(CONTRACTS_FILE):
+        return contracts
     with open(CONTRACTS_FILE, mode="r", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
