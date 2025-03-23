@@ -3,7 +3,7 @@ from typing import Tuple
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
-from models import linear_regression, support_vector_regression, lasso_regression
+from models import linear_regression, support_vector_regression, lasso_regression, write_scaler_to_file
 from runs import test_model_all_combo, test_model_all_combo_with_alpha, find_best_model_combo
 
 DATASET_DIR = "dataset"
@@ -47,10 +47,14 @@ def split_starters_relievers(data: pd.DataFrame, threshold: float = 0.85) -> Tup
 
 def normalize_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, MinMaxScaler]:
     scaler = MinMaxScaler()
+    df = sanitize_dataframe(df)
     numeric_cols = df.select_dtypes(include=['number']).columns
     df.loc[:, numeric_cols] = scaler.fit_transform(df[numeric_cols])
     print(df)
     return df, scaler
+
+def sanitize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    return df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
 if __name__ == "__main__":
     # generate batting and pitching data
@@ -60,14 +64,21 @@ if __name__ == "__main__":
     starting_pitching_data, relief_pitching_data = split_starters_relievers(pitching_data)
 
     # normalize dataframes
+    if not os.path.exists("scalers"):
+        os.mkdir("scalers")
     batting_data, batting_scaler = normalize_dataframe(batting_data)
+    write_scaler_to_file(batting_scaler, os.path.join("scalers", "batting_scaler.pkl"))
     starting_pitching_data, starting_pitching_scaler = normalize_dataframe(starting_pitching_data)
+    write_scaler_to_file(starting_pitching_scaler, os.path.join("scalers", "starting_pitching_scaler.pkl"))
     relief_pitching_data, relief_pitching_scaler = normalize_dataframe(relief_pitching_data)
+    write_scaler_to_file(relief_pitching_scaler, os.path.join("scalers", "relief_pitching_scaler.pkl"))
+
+
     
     # train and test logistic regression on both types of pitchers and print results
     starter_results_linear_regression = test_model_all_combo(
         "starter", 
-        starting_pitching_data, 
+        starting_pitching_data,
         linear_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
         ["mse", "r2", "model"]
@@ -91,7 +102,7 @@ if __name__ == "__main__":
 
     starter_results_svr = test_model_all_combo(
         "starter", 
-        starting_pitching_data, 
+        starting_pitching_data,
         support_vector_regression, 
         ["GS", "age", "service time", "W-L%", "ERA", "WHIP", "SO"],
         ["mse", "r2", "model"]

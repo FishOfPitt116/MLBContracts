@@ -5,6 +5,7 @@ PYTHON = PYTHONPATH=$(shell pwd) python3
 # add more test directories here as they get created
 # TEST_DIRS = tst/parse
 MAIN_FILE = src/main.py
+PREDICT_FILE = src/predict.py
 
 build: run
 
@@ -16,3 +17,7 @@ build: run
 run:
 	@echo "Running main application..."
 	$(PYTHON) $(MAIN_FILE)
+
+predict:
+	@echo "Running prediction using best models..."
+	$(PYTHON) $(PREDICT_FILE)

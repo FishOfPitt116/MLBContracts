@@ -60,3 +60,11 @@ def read_model_from_file(filename):
     if not os.path.exists(filename):
         return None
     return load(filename)
+
+def write_scaler_to_file(scaler, filename):
+    dump(scaler, filename)
+
+def read_scaler_from_file(filename):
+    if not os.path.exists(filename):
+        return None
+    return load(filename)
