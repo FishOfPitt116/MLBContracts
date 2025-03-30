@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from pybaseball import playerid_lookup
@@ -61,6 +62,8 @@ def get_table_headers(table: Tag) -> List[str]:
 def extract_player_data(row: Tag, headers: Dict[str, int]) -> Player:
     columns = row.find_all('td')
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
+    if name[1].endswith("QO"):
+        name[1] = name[1][:-2]  # Remove last two characters
     player_id = get_player_id(columns, headers)
 
     if player_id in PLAYER_OBJECT_CACHE:
@@ -161,4 +164,8 @@ def main(start_year, end_year=None):
         print(f"Finished writing {year} records to file.")
 
 if __name__ == "__main__":
-    main(2011)
+    args = ArgumentParser()
+    args.add_argument("--start-year", type=int, required=True)
+    args.add_argument("--end-year", type=int)
+    args = args.parse_args()
+    main(args.start_year, args.end_year)
