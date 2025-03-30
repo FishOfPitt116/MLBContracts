@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+import pandas as pd
 from pybaseball import playerid_lookup
 import requests
 from typing import Dict, List, Tuple
@@ -19,6 +20,9 @@ VETERAN_EXTENSIONS_URL = "https://www.spotrac.com/mlb/contracts/extensions/_/yea
 PLAYER_OBJECT_CACHE = {player.player_id: player for player in read_players_from_file()}
 CONTRACT_OBJECT_CACHE = {contract.contract_id: contract for contract in read_contracts_from_file()}
 
+def log(message: str):
+    print(f"[SPOTRAC DATA GENERATION] {message}")
+
 def fetch_spotrac_data(url: str) -> BeautifulSoup:
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
     if response.status_code == 200:
@@ -35,31 +39,79 @@ def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
 
     return f"{name[1]}_{link_id}"
 
-# BUG: players with accents in their names need to be added manually 
-def get_fangraphs_id(first_name, last_name) -> int:
+def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy: bool = False) -> int:
     # Handle names with periods by adding a space after the first period
     if "." in first_name:
         first_name = first_name.replace(".", ". ").strip()
-    id_df = playerid_lookup(last_name, first_name)
+
+    id_df = playerid_lookup(last_name, first_name, fuzzy)
+
     if len(id_df) == 1:
+        log("START PLAYER MAPPING")
+        log(f"Spotrac Name: {first_name} {last_name} ")
+        log(f"Fangraphs Name: {id_df['name_first'][0]} {id_df['name_last'][0]}")
+        log(f"Fangraphs ID: {id_df['key_fangraphs'][0]}")
+        log("END PLAYER MAPPING")
         return id_df["key_fangraphs"][0]
+    
     if len(id_df) == 0:
+        if not fuzzy:
+            # if no players found, get fuzzy results
+            return get_fangraphs_id(first_name, last_name, contract_year, fuzzy=True)
         print(f"Could not find player with name {first_name} {last_name}. Please provide first and last name.\nIf you do not know the player's name, please enter 'exit' to not create this player object.")
         first_name = input("First Name: ")
         if first_name.lower() == "exit":
             return -1
         last_name = input("Last Name: ")
-        return get_fangraphs_id(first_name, last_name)
+        return get_fangraphs_id(first_name, last_name, contract_year, fuzzy=fuzzy)
+    
+    # Remove duplicate rows based on key_fangraphs
+    id_df = id_df.drop_duplicates(subset=["key_fangraphs"])
+    
+    # Convert mlb_played_first and mlb_played_last to numeric, setting errors to NaN
+    id_df["mlb_played_first"] = pd.to_numeric(id_df["mlb_played_first"], errors='coerce')
+    id_df["mlb_played_last"] = pd.to_numeric(id_df["mlb_played_last"], errors='coerce')
+
+    # Drop rows where either value could not be converted
+    id_df = id_df.dropna(subset=["mlb_played_first", "mlb_played_last"])
+
+    # Convert remaining valid values to integers
+    id_df["mlb_played_first"] = id_df["mlb_played_first"].astype(int)
+    id_df["mlb_played_last"] = id_df["mlb_played_last"].astype(int)
+    
+    # Apply contract year filtering
+    filtered_df = id_df[
+        (id_df["mlb_played_first"] - 1 <= contract_year) & 
+        (id_df["mlb_played_last"] + 1 >= contract_year)
+    ]
+
+    # If multiple players remain, prompt user for selection
+    if not filtered_df.empty:
+        id_df = filtered_df  # Use the filtered list if possible
+
+    if len(id_df) == 1:
+        log("START PLAYER MAPPING")
+        log(f"Spotrac Name: {first_name} {last_name} ")
+        log(f"Fangraphs Name: {id_df['name_first'].iloc[0]} {id_df['name_last'].iloc[0]}")
+        log(f"Fangraphs ID: {id_df['key_fangraphs'].iloc[0]}")
+        log("END PLAYER MAPPING")
+        return id_df["key_fangraphs"].iloc[0]
+    
     print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below.")
     print(id_df)
     index = int(input("Enter the index number of the correct player: "))
+    log("START PLAYER MAPPING")
+    log(f"Spotrac Name: {first_name} {last_name} ")
+    log(f"Fangraphs Name: {id_df['name_first'][index]} {id_df['name_last'][index]}")
+    log(f"Fangraphs ID: {id_df['key_fangraphs'][index]}")
+    log("END PLAYER MAPPING")
     return id_df["key_fangraphs"][index]
 
 def get_table_headers(table: Tag) -> List[str]:
-    print( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
+    log( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
     return { sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() : i for i, header in enumerate(table.find("thead").find_all("th")) }
 
-def extract_player_data(row: Tag, headers: Dict[str, int]) -> Player:
+def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -> Player:
     columns = row.find_all('td')
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
     if name[1].endswith("QO"):
@@ -69,7 +121,7 @@ def extract_player_data(row: Tag, headers: Dict[str, int]) -> Player:
     if player_id in PLAYER_OBJECT_CACHE:
         return PLAYER_OBJECT_CACHE[player_id]
     
-    fangraphs_id = get_fangraphs_id(name[0], name[1])
+    fangraphs_id = get_fangraphs_id(name[0], name[1], contract_year)
     if fangraphs_id == -1:
         return None
 
@@ -115,9 +167,9 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
     if not table:
         return players, salaries
     headers = get_table_headers(table)
-    print(headers)
+    log(headers)
     for row in table.find("tbody").find_all("tr"):
-        player = extract_player_data(row, headers)
+        player = extract_player_data(row, headers, year)
         if not player:
             continue
         if player.player_id not in PLAYER_OBJECT_CACHE:
