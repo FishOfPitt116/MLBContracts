@@ -97,8 +97,10 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
         log("END PLAYER MAPPING")
         return id_df["key_fangraphs"].iloc[0]
     
-    print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below.")
+    print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below. Type 'exit' if none apply and the record will be ignored.")
     print(id_df)
+    if index == "exit":
+        return -1
     index = int(input("Enter the index number of the correct player: "))
     log("START PLAYER MAPPING")
     log(f"Spotrac Name: {first_name} {last_name} ")
