@@ -88,11 +88,19 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     # If multiple players remain, prompt user for selection
     if not filtered_df.empty:
         id_df = filtered_df  # Use the filtered list if possible
+    else:
+        log("PLAYER MAPPING FAILED")
+        log(f"Spotrac Name: {first_name} {last_name} ")
+        log("No players found within the contract year range.")
+        log("END PLAYER MAPPING")
+        return -1
 
-    if len(id_df) == 1:
+    if len(id_df) == 1 or 0 in id_df.index:
         log("START PLAYER MAPPING")
         log(f"Spotrac Name: {first_name} {last_name} ")
         log(f"Fangraphs Name: {id_df['name_first'].iloc[0]} {id_df['name_last'].iloc[0]}")
+        if 0 in id_df.index:
+            log("LOW CONFIDENCE MATCH")
         log(f"Fangraphs ID: {id_df['key_fangraphs'].iloc[0]}")
         log("END PLAYER MAPPING")
         return id_df["key_fangraphs"].iloc[0]
