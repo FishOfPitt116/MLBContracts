@@ -59,8 +59,8 @@ def write_contracts_to_file(contracts: List[Salary]):
                 writer.writerow([
                     contract.contract_id,
                     contract.player_id,
-                    contract.age or -1,
-                    contract.service_time or -1,
+                    contract.age if contract.age != None else -1,
+                    contract.service_time if contract.service_time != None else -1,
                     contract.year,
                     contract.duration,
                     contract.value,
