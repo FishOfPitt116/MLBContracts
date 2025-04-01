@@ -15,3 +15,9 @@ class LogStream:
             self.write("LOW CONFIDENCE MATCH")
         self.write(f"Fangraphs ID: {id_df['key_fangraphs'][index] if not iloc else id_df['key_fangraphs'].iloc[index]}")
         self.write("END PLAYER MAPPING")
+
+    def player_mapping_error(self, first_name: str, last_name: str):
+        self.write("PLAYER MAPPING FAILED")
+        self.write(f"Spotrac Name: {first_name} {last_name} ")
+        self.write("No players found within the contract year range.")
+        self.write("END PLAYER MAPPING")

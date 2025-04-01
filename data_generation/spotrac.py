@@ -85,10 +85,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     if not filtered_df.empty:
         id_df = filtered_df  # Use the filtered list if possible
     else:
-        LOG_STREAM.write("PLAYER MAPPING FAILED")
-        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
-        LOG_STREAM.write("No players found within the contract year range.")
-        LOG_STREAM.write("END PLAYER MAPPING")
+        LOG_STREAM.player_mapping_error(first_name, last_name)
         return -1
 
     if len(id_df) == 1 or 0 in id_df.index:
