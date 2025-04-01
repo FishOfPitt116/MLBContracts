@@ -47,11 +47,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     id_df = playerid_lookup(last_name, first_name, fuzzy)
 
     if len(id_df) == 1:
-        LOG_STREAM.write("START PLAYER MAPPING")
-        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
-        LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'][0]} {id_df['name_last'][0]}")
-        LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'][0]}")
-        LOG_STREAM.write("END PLAYER MAPPING")
+        LOG_STREAM.player_mapping(first_name, last_name, id_df, 0)
         return id_df["key_fangraphs"][0]
     
     if len(id_df) == 0:
@@ -96,13 +92,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
         return -1
 
     if len(id_df) == 1 or 0 in id_df.index:
-        LOG_STREAM.write("START PLAYER MAPPING")
-        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
-        LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'].iloc[0]} {id_df['name_last'].iloc[0]}")
-        if 0 in id_df.index:
-            LOG_STREAM.write("LOW CONFIDENCE MATCH")
-        LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'].iloc[0]}")
-        LOG_STREAM.write("END PLAYER MAPPING")
+        LOG_STREAM.player_mapping(first_name, last_name, id_df, 0, iloc=True, low_confidence=(0 in id_df.index))
         return id_df["key_fangraphs"].iloc[0]
     
     print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below. Type '-1' if none apply and the record will be ignored.")
@@ -110,11 +100,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     index = int(input("Enter the index number of the correct player: "))
     if index == -1:
         return -1
-    LOG_STREAM.write("START PLAYER MAPPING")
-    LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
-    LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'][index]} {id_df['name_last'][index]}")
-    LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'][index]}")
-    LOG_STREAM.write("END PLAYER MAPPING")
+    LOG_STREAM.player_mapping(first_name, last_name, id_df, index)
     return id_df["key_fangraphs"][index]
 
 def get_table_headers(table: Tag) -> List[str]:
