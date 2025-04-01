@@ -111,6 +111,13 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
         name[1] = name[1][:-2]  # Remove last two characters
     player_id = get_player_id(columns, headers)
 
+    # if the player doesn't have a contract value, skip them
+    value_str = sanitize_string(columns[headers['value']].get_text())
+    if value_str == 'N/A':
+        return None
+    if (float(value_str.replace("$", "").replace(",", "")) / 1_000_000) == 0:
+        return None
+
     if player_id in PLAYER_OBJECT_CACHE:
         return PLAYER_OBJECT_CACHE[player_id]
     
