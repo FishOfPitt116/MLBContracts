@@ -6,6 +6,7 @@ from pybaseball import playerid_lookup
 import requests
 from typing import Dict, List, Tuple
 
+from log_stream import LogStream
 from records import Player, Salary
 from save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
 
@@ -20,8 +21,7 @@ VETERAN_EXTENSIONS_URL = "https://www.spotrac.com/mlb/contracts/extensions/_/yea
 PLAYER_OBJECT_CACHE = {player.player_id: player for player in read_players_from_file()}
 CONTRACT_OBJECT_CACHE = {contract.contract_id: contract for contract in read_contracts_from_file()}
 
-def log(message: str):
-    print(f"[SPOTRAC DATA GENERATION] {message}")
+LOG_STREAM = LogStream("SPOTRAC DATA GENERATION")
 
 def fetch_spotrac_data(url: str) -> BeautifulSoup:
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -47,11 +47,11 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     id_df = playerid_lookup(last_name, first_name, fuzzy)
 
     if len(id_df) == 1:
-        log("START PLAYER MAPPING")
-        log(f"Spotrac Name: {first_name} {last_name} ")
-        log(f"Fangraphs Name: {id_df['name_first'][0]} {id_df['name_last'][0]}")
-        log(f"Fangraphs ID: {id_df['key_fangraphs'][0]}")
-        log("END PLAYER MAPPING")
+        LOG_STREAM.write("START PLAYER MAPPING")
+        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
+        LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'][0]} {id_df['name_last'][0]}")
+        LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'][0]}")
+        LOG_STREAM.write("END PLAYER MAPPING")
         return id_df["key_fangraphs"][0]
     
     if len(id_df) == 0:
@@ -89,20 +89,20 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     if not filtered_df.empty:
         id_df = filtered_df  # Use the filtered list if possible
     else:
-        log("PLAYER MAPPING FAILED")
-        log(f"Spotrac Name: {first_name} {last_name} ")
-        log("No players found within the contract year range.")
-        log("END PLAYER MAPPING")
+        LOG_STREAM.write("PLAYER MAPPING FAILED")
+        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
+        LOG_STREAM.write("No players found within the contract year range.")
+        LOG_STREAM.write("END PLAYER MAPPING")
         return -1
 
     if len(id_df) == 1 or 0 in id_df.index:
-        log("START PLAYER MAPPING")
-        log(f"Spotrac Name: {first_name} {last_name} ")
-        log(f"Fangraphs Name: {id_df['name_first'].iloc[0]} {id_df['name_last'].iloc[0]}")
+        LOG_STREAM.write("START PLAYER MAPPING")
+        LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
+        LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'].iloc[0]} {id_df['name_last'].iloc[0]}")
         if 0 in id_df.index:
-            log("LOW CONFIDENCE MATCH")
-        log(f"Fangraphs ID: {id_df['key_fangraphs'].iloc[0]}")
-        log("END PLAYER MAPPING")
+            LOG_STREAM.write("LOW CONFIDENCE MATCH")
+        LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'].iloc[0]}")
+        LOG_STREAM.write("END PLAYER MAPPING")
         return id_df["key_fangraphs"].iloc[0]
     
     print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below. Type '-1' if none apply and the record will be ignored.")
@@ -110,15 +110,15 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     index = int(input("Enter the index number of the correct player: "))
     if index == -1:
         return -1
-    log("START PLAYER MAPPING")
-    log(f"Spotrac Name: {first_name} {last_name} ")
-    log(f"Fangraphs Name: {id_df['name_first'][index]} {id_df['name_last'][index]}")
-    log(f"Fangraphs ID: {id_df['key_fangraphs'][index]}")
-    log("END PLAYER MAPPING")
+    LOG_STREAM.write("START PLAYER MAPPING")
+    LOG_STREAM.write(f"Spotrac Name: {first_name} {last_name} ")
+    LOG_STREAM.write(f"Fangraphs Name: {id_df['name_first'][index]} {id_df['name_last'][index]}")
+    LOG_STREAM.write(f"Fangraphs ID: {id_df['key_fangraphs'][index]}")
+    LOG_STREAM.write("END PLAYER MAPPING")
     return id_df["key_fangraphs"][index]
 
 def get_table_headers(table: Tag) -> List[str]:
-    log( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
+    LOG_STREAM.write( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
     return { sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() : i for i, header in enumerate(table.find("thead").find_all("th")) }
 
 def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -> Player:
@@ -177,7 +177,7 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
     if not table:
         return players, salaries
     headers = get_table_headers(table)
-    log(headers)
+    LOG_STREAM.write(headers)
     for row in table.find("tbody").find_all("tr"):
         player = extract_player_data(row, headers, year)
         if not player:
