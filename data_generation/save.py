@@ -8,9 +8,15 @@ from records import Player, Salary
 PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
 
-def write_players_to_file(players: List[Player]):
-    existing_players = {player.player_id: player for player in read_players_from_file()}
+def write_players_to_file(players: List[Player], overwrite: bool = False):
     file_exists = os.path.isfile(PLAYERS_FILE)
+    if overwrite and file_exists:
+        with open(PLAYERS_FILE, mode="w", newline="") as file:
+            # wipe existing file contents
+            file.truncate()
+            writer = csv.writer(file)
+            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "birth_date", "spotrac_link", "baseball_reference_link"])
+    existing_players = {player.player_id: player for player in read_players_from_file()}
     with open(PLAYERS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
         if not file_exists:
@@ -47,9 +53,15 @@ def read_players_from_file() -> List[Player]:
             ))
     return players
 
-def write_contracts_to_file(contracts: List[Salary]):
-    existing_contracts = {contract.contract_id: contract for contract in read_contracts_from_file()}
+def write_contracts_to_file(contracts: List[Salary], overwrite: bool = False):
     file_exists = os.path.isfile(CONTRACTS_FILE)
+    if overwrite and file_exists:
+        with open(CONTRACTS_FILE, mode="w", newline="") as file:
+            # wipe existing file contents
+            file.truncate()
+            writer = csv.writer(file)
+            writer.writerow(["contract_id", "player_id", "age", "service_time", "year", "duration", "value", "type"])
+    existing_contracts = {contract.contract_id: contract for contract in read_contracts_from_file()}
     with open(CONTRACTS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
         if not file_exists:

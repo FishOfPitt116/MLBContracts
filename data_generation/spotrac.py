@@ -34,6 +34,8 @@ def sanitize_string(s: str) -> str:
 
 def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
     name = sanitize_string(columns[headers['player']].get_text()).split(" ", 1)
+    if name[1].endswith("QO"):
+        name[1] = name[1][:-2]  # Remove last two characters
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
     link_id = spotrac_link.split("/")[-1]
 
@@ -46,6 +48,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
 
     id_df = playerid_lookup(last_name, first_name, fuzzy)
 
+    # BUG: some players have -1 in their fangraphs id, even though they have a fangraphs ID in the stats database
     if len(id_df) == 1:
         LOG_STREAM.player_mapping(first_name, last_name, id_df, 0)
         return id_df["key_fangraphs"][0]
