@@ -48,7 +48,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
 
     id_df = playerid_lookup(last_name, first_name, fuzzy)
 
-    # BUG: some players have -1 in their fangraphs id, even though they have a fangraphs ID in the stats database
+    # Note that playerid_lookup could return a player with id -1 if they haven't had a qualified season
     if len(id_df) == 1:
         LOG_STREAM.player_mapping(first_name, last_name, id_df, 0)
         return id_df["key_fangraphs"][0]

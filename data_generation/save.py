@@ -43,7 +43,7 @@ def read_players_from_file() -> List[Player]:
         for row in reader:
             players.append(Player(
                 player_id=row["player_id"],
-                fangraphs_id=row["fangraphs_id"],
+                fangraphs_id=int(row["fangraphs_id"]),
                 first_name=row["first_name"],
                 last_name=row["last_name"],
                 position=row["position"],
