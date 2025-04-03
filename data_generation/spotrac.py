@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 import pandas as pd
-from pybaseball import playerid_lookup
+from pybaseball import playerid_lookup, playerid_reverse_lookup
 import requests
 from typing import Dict, List, Tuple
 
@@ -103,6 +103,14 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     LOG_STREAM.player_mapping(first_name, last_name, id_df, index)
     return id_df["key_fangraphs"][index]
 
+def get_baseball_reference_link(fangraphs_id: int) -> str:
+    player_df = playerid_reverse_lookup(fangraphs_id, key_type='fangraphs')
+    if player_df.empty:
+        return None
+    baseball_reference_id = player_df["key_bbref"][0]
+    return f"https://www.baseball-reference.com/players/{baseball_reference_id[0]}/{baseball_reference_id}.shtml"
+
+
 def get_table_headers(table: Tag) -> List[str]:
     LOG_STREAM.write( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
     return { sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() : i for i, header in enumerate(table.find("thead").find_all("th")) }
@@ -129,6 +137,8 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
         return None
 
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
+    baseball_reference_link = get_baseball_reference_link(fangraphs_id)
+
     player_soup = fetch_spotrac_data(spotrac_link)
     # TODO: check spotrac link for birthday
     birthday = None
@@ -141,7 +151,7 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
         position=sanitize_string(columns[headers['pos']].get_text()),
         birth_date=birthday,
         spotrac_link=spotrac_link,
-        baseball_reference_link=None
+        baseball_reference_link=baseball_reference_link
     )
 
 def extract_salary_data(row: Tag, player_obj: Player, year: int, salary_type: str, headers: Dict[str, int]) -> Salary:
