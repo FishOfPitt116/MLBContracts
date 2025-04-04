@@ -1,9 +1,11 @@
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from datetime import datetime
 import pandas as pd
 from pybaseball import playerid_lookup, playerid_reverse_lookup
 import requests
+import time
 from typing import Dict, List, Tuple
 
 from log_stream import LogStream
@@ -110,6 +112,16 @@ def get_baseball_reference_link(fangraphs_id: int) -> str:
     baseball_reference_id = player_df["key_bbref"][0]
     return f"https://www.baseball-reference.com/players/{baseball_reference_id[0]}/{baseball_reference_id}.shtml"
 
+def get_player_birthday(baseball_reference_link: str) -> datetime:
+    time.sleep(3)  # To avoid throttling
+    response = requests.get(baseball_reference_link)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        birth_element = soup.find('span', id='necro-birth')
+        if birth_element and 'data-birth' in birth_element.attrs:
+            return datetime.strptime(birth_element['data-birth'], "%Y-%m-%d")
+    return None
+
 
 def get_table_headers(table: Tag) -> List[str]:
     LOG_STREAM.write( [ sanitize_string(header.get_text()).replace("$", " ").split(" ")[0].lower() for header in table.find("thead").find_all("th") ] )
@@ -139,9 +151,7 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
     spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
     baseball_reference_link = get_baseball_reference_link(fangraphs_id)
 
-    player_soup = fetch_spotrac_data(spotrac_link)
-    # TODO: check spotrac link for birthday
-    birthday = None
+    birthday = get_player_birthday(baseball_reference_link)
 
     return Player(
         player_id=player_id,
