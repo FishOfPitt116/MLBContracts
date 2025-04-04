@@ -106,7 +106,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     return id_df["key_fangraphs"][index]
 
 def get_baseball_reference_link(fangraphs_id: int) -> str:
-    player_df = playerid_reverse_lookup(fangraphs_id, key_type='fangraphs')
+    player_df = playerid_reverse_lookup([fangraphs_id], key_type='fangraphs')
     if player_df.empty:
         return None
     baseball_reference_id = player_df["key_bbref"][0]
@@ -170,6 +170,11 @@ def extract_salary_data(row: Tag, player_obj: Player, year: int, salary_type: st
     value_str = sanitize_string(columns[headers['value']].get_text())
     if value_str == 'N/A':
         return None
+    
+    if 'type' in headers:
+        type_string = sanitize_string(columns[headers['type']].get_text())
+        if type_string == 'Estimate':
+            return None
     
     age = int(sanitize_string(columns[headers['age']].get_text())) if 'age' in headers else None
     # if age is not present, we assume player signs contract on 3/1/year
