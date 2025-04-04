@@ -75,7 +75,26 @@ def update_player_birthdays():
     write_players_to_file(players, overwrite=True)
     print(f"Updated {updated_players} players with missing birth dates.")
 
+def calculate_empty_contract_ages():
+    players = read_players_from_file()
+    player_id_to_birth_date = {player.player_id: player.birth_date for player in players}
+
+    contracts = read_contracts_from_file()
+
+    contracts_updated = 0
+
+    for contract in contracts:
+        if contract.age is None:
+            contract_date = datetime(contract.year, 3, 1)
+            age = contract_date - player_id_to_birth_date[contract.player_id]
+            contract.age = age.days // 365
+            contracts_updated += 1
+            
+    write_contracts_to_file(contracts, overwrite=True)
+    print(f"Updated ages for {contracts_updated} contracts.")
+
 if __name__ == "__main__":
     clean_players_with_qo()
     update_baseball_reference_links()
     update_player_birthdays()
+    calculate_empty_contract_ages()

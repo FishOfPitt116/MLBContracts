@@ -166,13 +166,22 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
 
 def extract_salary_data(row: Tag, player_obj: Player, year: int, salary_type: str, headers: Dict[str, int]) -> Salary:
     columns = row.find_all('td')
+
     value_str = sanitize_string(columns[headers['value']].get_text())
     if value_str == 'N/A':
         return None
+    
+    age = int(sanitize_string(columns[headers['age']].get_text())) if 'age' in headers else None
+    # if age is not present, we assume player signs contract on 3/1/year
+    if age is None and player_obj.birth_date is not None:
+        contract_date = datetime(year, 3, 1)
+        age = contract_date - player_obj.birth_date
+        age = age.days // 365
+
     return Salary(
         contract_id=f"{player_obj.player_id}_{year}",
         player_id=player_obj.player_id,
-        age=int(sanitize_string(columns[headers['age']].get_text())) if 'age' in headers else None,  # TODO: fix to calculate age when Player has birthdate filled
+        age=age,
         service_time=float(sanitize_string(columns[headers['yos']].get_text())) if 'yos' in headers else None, # TODO: maybe calculate service time? Might not matter for free agents
         year=year,
         duration=int(sanitize_string(columns[headers['yrs']].get_text())) if 'yrs' in headers else 1,
