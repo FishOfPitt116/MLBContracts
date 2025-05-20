@@ -8,6 +8,7 @@ MAIN_FILE = src/main.py
 PREDICT_FILE = src/predict.py
 # TODO: change this to the actual main dataset generation file once stats are added
 DATASET_FILE = data_generation/spotrac.py
+ANALYSIS_FILE = analysis/contract_analysis.py
 
 .PHONY: build run predict dataset
 
@@ -29,3 +30,8 @@ predict:
 dataset:
 	@echo "Assembling dataset..."
 	$(PYTHON) $(DATASET_FILE)
+
+analyze:
+	@echo "Running contract analysis..."
+	$(PYTHON) $(ANALYSIS_FILE)
+	@echo "Contract analysis complete!"
