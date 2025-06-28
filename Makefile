@@ -29,7 +29,7 @@ predict:
 
 dataset:
 	@echo "Assembling dataset..."
-	$(PYTHON) $(DATASET_FILE)
+	$(PYTHON) $(DATASET_FILE) --start-year 2011 --end-year 2025
 
 analyze:
 	@echo "Running contract analysis..."
