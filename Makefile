@@ -1,5 +1,5 @@
 # Python interpreter
-PYTHON = PYTHONPATH=$(shell pwd) python3
+PYTHON = PYTHONPATH=$(shell pwd) python3 
 
 # files
 # TODO: add more test directories here as they get created
@@ -7,7 +7,7 @@ PYTHON = PYTHONPATH=$(shell pwd) python3
 MAIN_FILE = src/main.py
 PREDICT_FILE = src/predict.py
 # TODO: change `data_generation/spotrac.py` to the actual main dataset generation file once stats are added
-DATASET_FILE = data_generation/spotrac.py
+DATASET_FILE = data_generation.spotrac
 ANALYSIS_FILE = analysis/contract_analysis.py
 
 .PHONY: build run predict dataset
@@ -29,7 +29,7 @@ predict:
 
 dataset:
 	@echo "Assembling dataset..."
-	$(PYTHON) $(DATASET_FILE) --start-year 2011 --end-year 2025
+	$(PYTHON) -m $(DATASET_FILE) --start-year 2011 --end-year 2025
 
 analyze:
 	@echo "Running contract analysis..."

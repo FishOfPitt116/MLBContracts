@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from typing import List, Tuple
 
-from records import Player, Salary, BatterStats, PitcherStats
+from .records import Player, Salary, BatterStats, PitcherStats
 
 PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"

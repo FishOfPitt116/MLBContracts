@@ -6,11 +6,11 @@ import pandas as pd
 from pybaseball import playerid_lookup, playerid_reverse_lookup
 import requests
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from log_stream import LogStream
-from records import Player, Salary
-from save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
+from .log_stream import LogStream
+from .records import Player, Salary
+from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
 
 PRE_ARB_URL = "https://www.spotrac.com/mlb/pre-arbitration/_/year/{year}/"
 ARB_URL = "https://www.spotrac.com/mlb/arbitration/_/year/{year}"
@@ -112,7 +112,7 @@ def get_baseball_reference_link(fangraphs_id: int) -> str:
     baseball_reference_id = player_df["key_bbref"][0]
     return f"https://www.baseball-reference.com/players/{baseball_reference_id[0]}/{baseball_reference_id}.shtml"
 
-def get_player_birthday(baseball_reference_link: str) -> datetime:
+def get_player_birthday(baseball_reference_link: str) -> Optional[datetime]:
     time.sleep(3)  # To avoid throttling
     response = requests.get(baseball_reference_link)
     if response.status_code == 200:

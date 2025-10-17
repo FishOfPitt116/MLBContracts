@@ -3,7 +3,7 @@ from datetime import datetime
 from pybaseball import playerid_reverse_lookup
 import re
 import requests
-from save import read_players_from_file, write_players_to_file, read_contracts_from_file, write_contracts_to_file
+from .save import read_players_from_file, write_players_to_file, read_contracts_from_file, write_contracts_to_file
 import time
 
 def clean_players_with_qo():
