@@ -1,9 +1,9 @@
 import csv
 import os
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
 
-from records import Player, Salary
+from records import Player, Salary, BatterStats, PitcherStats
 
 PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
@@ -97,3 +97,11 @@ def read_contracts_from_file() -> List[Salary]:
                 type=row["type"]
             ))
     return contracts
+
+def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[PitcherStats], overwrite: bool = False):
+    # TODO: implement function to write stats to file
+    pass
+
+def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
+    # TODO: implement function to read stats from file
+    return [], []

@@ -25,8 +25,10 @@ class Salary:
 
 @dataclass
 class BatterStats:
+    # TODO: fill records
     pass
 
 @dataclass
 class PitcherStats:
+    # TODO: fill records
     pass
