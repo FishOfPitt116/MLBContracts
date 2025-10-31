@@ -101,7 +101,6 @@ def read_contracts_from_file() -> List[Salary]:
     return contracts
 
 def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[PitcherStats], overwrite: bool = False):
-    # TODO: implement function to write stats to file
     batting_stats_file_exists = os.path.isfile(BATTER_STATS_FILE)
     pitching_stats_file_exists = os.path.isfile(PITCHER_STATS_FILE)
     if overwrite and batting_stats_file_exists:
