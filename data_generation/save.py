@@ -124,6 +124,7 @@ def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[Pit
         if not batting_stats_file_exists:
             writer.writerow(["player_id", "year"])
         for stat in batter_stats:
+            # TODO: if it's current year, override regardless (to keep in line with live stats)
             if (stat.player_id, stat.year) not in existing_batter_stats:
                 writer.writerow([
                     stat.player_id,
@@ -134,6 +135,7 @@ def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[Pit
         if not pitching_stats_file_exists:
             writer.writerow(["player_id", "year"])
         for stat in pitcher_stats:
+            # TODO: if it's current year, override regardless (to keep in line with live stats)
             if (stat.player_id, stat.year) not in existing_pitcher_stats:
                 writer.writerow([
                     stat.player_id,
