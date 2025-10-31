@@ -1,4 +1,4 @@
-from pybaseball import playerid_reverse_lookup, batting_stats, pitching_stats
+from pybaseball import playerid_reverse_lookup, batting_stats, pitching_stats, cache
 from typing import Dict, List, Tuple
 
 from data_generation.records import BatterStats, PitcherStats
@@ -10,6 +10,7 @@ def get_fangraphs_playerid_list() -> Dict[int, str]:
 
 def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, start_year: int, end_year: int) -> Tuple[List[BatterStats], List[PitcherStats]]:
     # CRITICAL: we have to ensure that the pybaseball cache is enabled to avoid excessive API calls
+    # TODO: need to add optimizations here. Even with cache enabled calls still take a long time
     for year in range(start_year, end_year+1):
         raw_batting_stats = batting_stats(year)
         player_raw_batting_stats = raw_batting_stats[raw_batting_stats['IDfg'] == fangraphs_player_id]
@@ -35,8 +36,9 @@ def main():
     for fangraphs_id in fg_player_ids.keys():
         player_info = player_data[player_data['key_fangraphs'] == fangraphs_id]
         if not player_info.empty:
-            mlb_played_first = player_info['mlb_played_first'].values[0]
-            mlb_played_last = player_info['mlb_played_last'].values[0]
+            mlb_played_first = int(player_info['mlb_played_first'].values[0])
+            mlb_played_last = int(player_info['mlb_played_last'].values[0])
+            print(f"First year {mlb_played_first} last year {mlb_played_last}")  # temporary log
             player_batter_stats, player_pitching_stats = assemble_stat_records(fg_player_ids.get(fangraphs_id),
                                                                                fangraphs_id,
                                                                                mlb_played_first,
@@ -47,4 +49,6 @@ def main():
 
 
 if __name__ == "__main__":
+    print("enabling pybaseball cache")
+    cache.enable()
     main()
