@@ -102,7 +102,43 @@ def read_contracts_from_file() -> List[Salary]:
 
 def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[PitcherStats], overwrite: bool = False):
     # TODO: implement function to write stats to file
-    pass
+    batting_stats_file_exists = os.path.isfile(BATTER_STATS_FILE)
+    pitching_stats_file_exists = os.path.isfile(PITCHER_STATS_FILE)
+    if overwrite and batting_stats_file_exists:
+        with open(BATTER_STATS_FILE, mode="w", newline="") as file:
+            # wipe existing file contents
+            file.truncate()
+            writer = csv.writer(file)
+            writer.writerow(["player_id", "year"])
+    if overwrite and pitching_stats_file_exists:
+        with open(PITCHER_STATS_FILE, mode="w", newline="") as file:
+            # wipe existing file contents
+            file.truncate()
+            writer = csv.writer(file)
+            writer.writerow(["player_id", "year"])
+    current_stats = read_stats_from_file()
+    existing_batter_stats = {(stat.player_id, stat.year): stat for stat in current_stats[0]}
+    existing_pitcher_stats = {(stat.player_id, stat.year): stat for stat in current_stats()[1]}
+    with open(BATTER_STATS_FILE, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        if not batting_stats_file_exists:
+            writer.writerow(["player_id", "year"])
+        for stat in batter_stats:
+            if (stat.player_id, stat.year) not in existing_batter_stats:
+                writer.writerow([
+                    stat.player_id,
+                    stat.year
+                ])
+    with open(PITCHER_STATS_FILE, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        if not pitching_stats_file_exists:
+            writer.writerow(["player_id", "year"])
+        for stat in pitcher_stats:
+            if (stat.player_id, stat.year) not in existing_pitcher_stats:
+                writer.writerow([
+                    stat.player_id,
+                    stat.year
+                ])
 
 def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
     batter_stats, pitcher_stats = [], []
