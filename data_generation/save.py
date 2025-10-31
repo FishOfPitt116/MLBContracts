@@ -7,6 +7,8 @@ from .records import Player, Salary, BatterStats, PitcherStats
 
 PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
+BATTER_STATS_FILE = "dataset/batter_stats.csv"
+PITCHER_STATS_FILE = "dataset/pitcher_stats.csv"
 
 def write_players_to_file(players: List[Player], overwrite: bool = False):
     file_exists = os.path.isfile(PLAYERS_FILE)
@@ -103,5 +105,21 @@ def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[Pit
     pass
 
 def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
-    # TODO: implement function to read stats from file
-    return [], []
+    batter_stats, pitcher_stats = [], []
+    if os.path.isfile(BATTER_STATS_FILE):
+        with open(BATTER_STATS_FILE, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                batter_stats.append(BatterStats(
+                    player_id=row["player_id"],
+                    year=int(row["year"])
+                ))
+    if os.path.isfile(PITCHER_STATS_FILE):
+        with open(PITCHER_STATS_FILE, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                pitcher_stats.append(PitcherStats(
+                    player_id=row["player_id"],
+                    year=int(row["year"])
+                ))
+    return batter_stats, pitcher_stats

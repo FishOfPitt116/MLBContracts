@@ -25,10 +25,12 @@ class Salary:
 
 @dataclass
 class BatterStats:
-    # TODO: fill records
-    pass
+    player_id: str
+    year: int
+    # TODO: add relevant fields
 
 @dataclass
 class PitcherStats:
-    # TODO: fill records
-    pass
+    player_id: str
+    year: int
+    # TODO: add relevant fields
