@@ -12,6 +12,8 @@ from .log_stream import LogStream
 from .records import Player, Salary
 from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
 
+CURRENT_YEAR = datetime.now().year
+
 PRE_ARB_URL = "https://www.spotrac.com/mlb/pre-arbitration/_/year/{year}/"
 ARB_URL = "https://www.spotrac.com/mlb/arbitration/_/year/{year}"
 FREE_AGENT_URL = "https://www.spotrac.com/mlb/free-agents/_/year/{year}/level/mlb"
@@ -24,6 +26,24 @@ PLAYER_OBJECT_CACHE = {player.player_id: player for player in read_players_from_
 CONTRACT_OBJECT_CACHE = {contract.contract_id: contract for contract in read_contracts_from_file()}
 
 LOG_STREAM = LogStream("SPOTRAC DATA GENERATION")
+
+def _year_exists_in_dataset(year: int) -> bool:
+    """
+    Check if a year already exists in the contracts dataset.
+
+    Assumption: If a year != CURRENT_YEAR exists in the dataset, all contracts from that year
+    have been successfully written (complete scrape with all contract types: pre-arb, arb, free-agent).
+    This assumes that the main() function completes all fetches and writes for a year before moving on.
+
+    Note: In rare cases of mid-scrape failures, partial data could exist. Users can use --overwrite
+    to force re-fetch in these scenarios.
+
+    Returns True if year exists in dataset, False otherwise.
+    """
+    for contract in CONTRACT_OBJECT_CACHE.values():
+        if contract.year == year:
+            return True
+    return False
 
 def fetch_spotrac_data(url: str) -> BeautifulSoup:
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -54,7 +74,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     if len(id_df) == 1:
         LOG_STREAM.player_mapping(first_name, last_name, id_df, 0)
         return id_df["key_fangraphs"][0]
-    
+
     if len(id_df) == 0:
         if not fuzzy:
             # if no players found, get fuzzy results
@@ -65,10 +85,10 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
             return -1
         last_name = input("Last Name: ")
         return get_fangraphs_id(first_name, last_name, contract_year, fuzzy=fuzzy)
-    
+
     # Remove duplicate rows based on key_fangraphs
     id_df = id_df.drop_duplicates(subset=["key_fangraphs"])
-    
+
     # Convert mlb_played_first and mlb_played_last to numeric, setting errors to NaN
     id_df["mlb_played_first"] = pd.to_numeric(id_df["mlb_played_first"], errors='coerce')
     id_df["mlb_played_last"] = pd.to_numeric(id_df["mlb_played_last"], errors='coerce')
@@ -79,7 +99,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     # Convert remaining valid values to integers
     id_df["mlb_played_first"] = id_df["mlb_played_first"].astype(int)
     id_df["mlb_played_last"] = id_df["mlb_played_last"].astype(int)
-    
+
     # Apply contract year filtering
     filtered_df = id_df[
         (id_df["mlb_played_first"] - 1 <= contract_year) & 
@@ -96,7 +116,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     if len(id_df) == 1 or 0 in id_df.index:
         LOG_STREAM.player_mapping(first_name, last_name, id_df, 0, iloc=True, low_confidence=(0 in id_df.index))
         return id_df["key_fangraphs"].iloc[0]
-    
+
     print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below. Type '-1' if none apply and the record will be ignored.")
     print(id_df)
     index = int(input("Enter the index number of the correct player: "))
@@ -143,7 +163,7 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
 
     if player_id in PLAYER_OBJECT_CACHE:
         return PLAYER_OBJECT_CACHE[player_id]
-    
+
     fangraphs_id = get_fangraphs_id(name[0], name[1], contract_year)
     if fangraphs_id == -1:
         return None
@@ -170,12 +190,12 @@ def extract_salary_data(row: Tag, player_obj: Player, year: int, salary_type: st
     value_str = sanitize_string(columns[headers['value']].get_text())
     if value_str == 'N/A':
         return None
-    
+
     if 'type' in headers:
         type_string = sanitize_string(columns[headers['type']].get_text())
         if type_string == 'Estimate':
             return None
-    
+
     age = int(sanitize_string(columns[headers['age']].get_text())) if 'age' in headers else None
     # if age is not present, we assume player signs contract on 3/1/year
     if age is None and player_obj.birth_date is not None:
@@ -198,7 +218,7 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
     soup = fetch_spotrac_data(url)
     if not soup:
         return [], []
-    
+
     players, salaries = [], []
     table = soup.find("table")
     if not table:
@@ -239,8 +259,16 @@ def get_free_agent_records(year: int) -> Tuple[List[Player], List[Salary]]:
     extensions = get_records(VETERAN_EXTENSIONS_URL.format(year=year), year, "free-agent")
     return (contracts[0]+extensions[0], contracts[1]+extensions[1])
 
-def main(start_year, end_year=None):
+def main(start_year, end_year=None, overwrite=False):
     for year in range(start_year, end_year+1 if end_year else start_year+1):
+        # Skip fetching if year already exists and is not the current year
+        if not overwrite and _year_exists_in_dataset(year) and year != CURRENT_YEAR:
+            print(f"\n{'='*60}")
+            print(f"Year {year} already exists in dataset (not current year)")
+            print(f"Skipping scrape for year {year}")
+            print(f"{'='*60}\n")
+            continue
+
         pre_arb_players, pre_arb_salaries = get_pre_arb_records(year)
         arb_players, arb_salaries = get_arb_records(year)
         free_agent_players, free_agent_salaries = get_free_agent_records(year)
@@ -256,5 +284,6 @@ if __name__ == "__main__":
     args = ArgumentParser()
     args.add_argument("--start-year", type=int, required=True)
     args.add_argument("--end-year", type=int)
+    args.add_argument("--overwrite", action="store_true", help="Force re-fetch of data even if year exists in dataset")
     args = args.parse_args()
-    main(args.start_year, args.end_year)
+    main(args.start_year, args.end_year, args.overwrite)
