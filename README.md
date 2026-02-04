@@ -42,18 +42,25 @@ This README explains repository layout, how to install dependencies, how to run 
   ```
 
 ## Data collection
-- Primary scraper/assembler: `data_generation/spotrac.py`
+- Data collection is a two-step process: **contracts** (via spotrac scraping) + **statistics** (via pybaseball)
+- Primary scrapers/assemblers:
+  - `data_generation/spotrac.py` — Scrapes MLB contract data from spotrac.com
+  - `data_generation/stats.py` — Collects player season statistics from pybaseball
 - Typical usage:
   ```bash
-  # run the spotrac data collection entrypoint
+  # Run both contract and stats collection (recommended)
   make dataset
-  # or
-  python -m data_generation.spotrac
-  # or
-  python data_generation/spotrac.py
+  # or run separately
+  python -m data_generation.spotrac --start-year 2011 --end-year 2025
+  python -m data_generation.stats
   ```
-- Output dataset examples:
-  - `dataset/contracts_spotrac.csv` — main contract table used by analysis
+- Contract collection optimization: Historical years (not current year) are cached and skipped on subsequent runs
+  - Use `--overwrite` flag to force re-fetch: `python -m data_generation.spotrac --start-year 2011 --end-year 2025 --overwrite`
+- Stats collection optimization: Players without current-year data are skipped on subsequent runs
+- Output datasets:
+  - `dataset/contracts_spotrac.csv` — Main contract table used by analysis
+  - `dataset/batter_stats.csv` — Batting statistics (individual years and rolling windows)
+  - `dataset/pitcher_stats.csv` — Pitching statistics (individual years and rolling windows)
 
 ## Analysis & visualization
 - Main analysis entrypoint: `analysis/contract_analysis.py`
@@ -62,9 +69,17 @@ This README explains repository layout, how to install dependencies, how to run 
     - Pre-arbitration, arbitration, and free-agent analysis functions are invoked via `pre_arb.main()`, `arb.main()`, and `free_agents.main()` when run as `__main__`.
   - Run it with:
     ```bash
+    make analyze
+    # or
     python analysis/contract_analysis.py
     ```
   - The script creates `analysis/graphs/` (if missing) and writes PNG files there.
+
+- **Note on datasets**: Before running analysis, ensure both contracts and stats datasets are current:
+  - `dataset/contracts_spotrac.csv` — Player contracts (required)
+  - `dataset/batter_stats.csv` — Batting stats with rolling windows (optional for current analyses)
+  - `dataset/pitcher_stats.csv` — Pitching stats with rolling windows (optional for current analyses)
+  - Run `make dataset` to refresh all datasets.
 
 - Arbitration service-time vs contract value plot:
   - The arbitration scatter plot function (e.g., `arbitration_service_time_vs_contract_value`) generates a scatter of service time vs AAV and overlays a dotted best-fit regression line (via seaborn/matplotlib). Look for the generated PNGs in `analysis/graphs/`.
@@ -77,9 +92,16 @@ This README explains repository layout, how to install dependencies, how to run 
 - `archive/` contains earlier project snapshots and experimental code. These are preserved for reference only and are not part of the active pipeline. Do not modify files under `archive/` when working on the main pipeline.
 
 ## Troubleshooting & tips
-- Missing dataset: re-run `make dataset` or locate CSVs in `dataset/`.
-- Plot files not appearing: confirm `analysis/contract_analysis.py` created `analysis/graphs/` (it does by default) and check file permissions.
-- Reproducibility: use a virtual environment and pin dependencies in `requirements.txt`.
+- **Missing datasets**: Run `make dataset` to generate all datasets (contracts + stats)
+  - Contracts dataset: `dataset/contracts_spotrac.csv`
+  - Batter stats dataset: `dataset/batter_stats.csv`
+  - Pitcher stats dataset: `dataset/pitcher_stats.csv`
+- **Data collection optimizations**:
+  - Contract collection caches historical years—only current year (2026) is fetched on subsequent runs
+  - Stats collection skips players not active in current year—only updates for current-year players
+  - Use `--overwrite` flag with spotrac scraper to force full re-fetch: `python -m data_generation.spotrac --start-year 2011 --end-year 2025 --overwrite`
+- **Plot files not appearing**: Confirm `analysis/contract_analysis.py` created `analysis/graphs/` (it does by default) and check file permissions.
+- **Reproducibility**: Use a virtual environment and pin dependencies in `requirements.txt`.
 
 ## Contributing
 - Open a PR with a clear description and tests for new behavior.
