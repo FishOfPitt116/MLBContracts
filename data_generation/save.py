@@ -6,6 +6,8 @@ from typing import List, Tuple
 
 from .records import Player, Salary, BatterStats, PitcherStats
 
+CURRENT_YEAR = datetime.now().year
+
 PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
 BATTER_STATS_FILE = "dataset/batter_stats.csv"
@@ -136,18 +138,34 @@ def write_batter_stats(batter_stats: List[BatterStats], overwrite: bool = False)
             writer = csv.writer(file)
             writer.writerow(headers)
 
-    # Read existing stats to avoid duplicates
+    # Read existing stats
     existing_stats = {stat.get_key(): stat for stat in read_batter_stats()}
 
-    # Write stats
-    with open(BATTER_STATS_FILE, mode="a", newline="") as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(headers)
+    # Update with new stats
+    needs_rewrite = False
+    for stat in batter_stats:
+        stat_key = stat.get_key()
+        if stat_key not in existing_stats or existing_stats[stat_key].year == CURRENT_YEAR:
+            existing_stats[stat_key] = stat
+            if stat_key in existing_stats:
+                needs_rewrite = True
 
-        for stat in batter_stats:
-            if stat.get_key() not in existing_stats:
+    # If we updated any current-year records, rewrite entire file
+    if needs_rewrite and file_exists:
+        with open(BATTER_STATS_FILE, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+            for stat in existing_stats.values():
                 writer.writerow(_get_dataclass_values(stat))
+    else:
+        # Otherwise just append new records
+        with open(BATTER_STATS_FILE, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(headers)
+            for stat in batter_stats:
+                if stat.get_key() not in {s.get_key() for s in read_batter_stats()}:
+                    writer.writerow(_get_dataclass_values(stat))
 
 
 def write_pitcher_stats(pitcher_stats: List[PitcherStats], overwrite: bool = False):
@@ -164,18 +182,34 @@ def write_pitcher_stats(pitcher_stats: List[PitcherStats], overwrite: bool = Fal
             writer = csv.writer(file)
             writer.writerow(headers)
 
-    # Read existing stats to avoid duplicates
+    # Read existing stats
     existing_stats = {stat.get_key(): stat for stat in read_pitcher_stats()}
 
-    # Write stats
-    with open(PITCHER_STATS_FILE, mode="a", newline="") as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(headers)
+    # Update with new stats
+    needs_rewrite = False
+    for stat in pitcher_stats:
+        stat_key = stat.get_key()
+        if stat_key not in existing_stats or existing_stats[stat_key].year == CURRENT_YEAR:
+            existing_stats[stat_key] = stat
+            if stat_key in existing_stats:
+                needs_rewrite = True
 
-        for stat in pitcher_stats:
-            if stat.get_key() not in existing_stats:
+    # If we updated any current-year records, rewrite entire file
+    if needs_rewrite and file_exists:
+        with open(PITCHER_STATS_FILE, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+            for stat in existing_stats.values():
                 writer.writerow(_get_dataclass_values(stat))
+    else:
+        # Otherwise just append new records
+        with open(PITCHER_STATS_FILE, mode="a", newline="") as file:
+            writer = csv.writer(file)
+            if not file_exists:
+                writer.writerow(headers)
+            for stat in pitcher_stats:
+                if stat.get_key() not in {s.get_key() for s in read_pitcher_stats()}:
+                    writer.writerow(_get_dataclass_values(stat))
 
 
 def read_batter_stats() -> List[BatterStats]:

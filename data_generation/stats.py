@@ -1,12 +1,37 @@
 from pybaseball import playerid_reverse_lookup, batting_stats, pitching_stats, cache
 from typing import Dict, List, Tuple
 import pandas as pd
+from datetime import datetime
 
 from data_generation.records import BatterStats, PitcherStats
-from data_generation.save import read_players_from_file, write_stats_to_file
+from data_generation.save import read_players_from_file, write_stats_to_file, read_batter_stats, read_pitcher_stats
+
+CURRENT_YEAR = datetime.now().year
 
 def get_fangraphs_playerid_list() -> Dict[int, str]:
     return {player.fangraphs_id: player.player_id for player in read_players_from_file() if player.fangraphs_id is not None}
+
+
+def _player_stats_exist(internal_player_id: str, existing_batter_stats: List[BatterStats], existing_pitcher_stats: List[PitcherStats]) -> bool:
+    """
+    Check if the player already has any stats in the dataset.
+
+    Args:
+        internal_player_id: Player ID to check
+        existing_batter_stats: Pre-loaded list of existing batter stats
+        existing_pitcher_stats: Pre-loaded list of existing pitcher stats
+
+    Returns True if the player has at least one stat record, False otherwise.
+    """
+    for stat in existing_batter_stats:
+        if stat.player_id == internal_player_id:
+            return True
+    for stat in existing_pitcher_stats:
+        if stat.player_id == internal_player_id:
+            return True
+
+    return False
+
 
 
 def create_batter_stat_record(player_id: str, year: int, window_years: int, row: pd.Series) -> BatterStats:
@@ -97,7 +122,7 @@ def create_pitcher_stat_record(player_id: str, year: int, window_years: int, row
     )
 
 
-def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, start_year: int, end_year: int) -> Tuple[List[BatterStats], List[PitcherStats]]:
+def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, start_year: int, end_year: int, existing_batter_stats: List[BatterStats], existing_pitcher_stats: List[PitcherStats]) -> Tuple[List[BatterStats], List[PitcherStats]]:
     """
     Collects both individual year stats and accumulated window stats for a player.
 
@@ -112,10 +137,21 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
         fangraphs_player_id: FanGraphs player ID for API queries
         start_year: First year player played in MLB
         end_year: Last year player played in MLB
+        existing_batter_stats: Pre-loaded list of existing batter stats
+        existing_pitcher_stats: Pre-loaded list of existing pitcher stats
 
     Returns:
         Tuple of (batter_stats_list, pitcher_stats_list)
     """
+    # Skip fetching if player already in dataset and not playing in current year
+    # This clause operates on the assumption that if a player is in the dataset in any capacity, their full career has already been fetched
+    if _player_stats_exist(internal_player_id, existing_batter_stats, existing_pitcher_stats) and end_year != CURRENT_YEAR:
+        print(f"\n{'='*60}")
+        print(f"Stats already exist for {internal_player_id} (not playing in {CURRENT_YEAR})")
+        print(f"Skipping pybaseball fetch")
+        print(f"{'='*60}\n")
+        return [], []
+
     # Note that we cannot for greater than 10 year windows due to a fangraphs limitation: https://github.com/jldbc/pybaseball/issues/492#issuecomment-3741471714
     WINDOW_SIZES = [3, 5, 10]  # Different lookback periods for model
 
@@ -232,6 +268,10 @@ def main():
     fg_player_ids = get_fangraphs_playerid_list()
     player_data = playerid_reverse_lookup(list(fg_player_ids.keys()), key_type='fangraphs')
 
+    # Load existing stats once to avoid repeated file reads
+    existing_batter_stats = read_batter_stats()
+    existing_pitcher_stats = read_pitcher_stats()
+
     total_players = len(fg_player_ids)
     print(f"\n{'='*60}")
     print(f"Starting stats collection for {total_players} players")
@@ -251,9 +291,14 @@ def main():
                 fg_player_ids.get(fangraphs_id),
                 fangraphs_id,
                 mlb_played_first,
-                mlb_played_last
+                mlb_played_last,
+                existing_batter_stats,
+                existing_pitcher_stats
             )
 
+            if not player_batter_stats and not player_pitching_stats:
+                print(f"⚠ No new stats to write for {fg_player_ids.get(fangraphs_id)}")
+                continue
             print(f"Writing records to file...")
             write_stats_to_file(player_batter_stats, player_pitching_stats)
             print(f"✓ Completed {fg_player_ids.get(fangraphs_id)}")
