@@ -1,5 +1,6 @@
 import csv
 import os
+from dataclasses import fields
 from datetime import datetime
 from typing import List, Tuple
 
@@ -9,6 +10,16 @@ PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
 BATTER_STATS_FILE = "dataset/batter_stats.csv"
 PITCHER_STATS_FILE = "dataset/pitcher_stats.csv"
+
+def _get_dataclass_headers(dataclass_type) -> List[str]:
+    """Extract field names from a dataclass to use as CSV headers"""
+    return [field.name for field in fields(dataclass_type)]
+
+
+def _get_dataclass_values(instance) -> List:
+    """Extract field values from a dataclass instance in the same order as headers"""
+    return [_optional_value(getattr(instance, field.name)) for field in fields(instance)]
+
 
 def write_players_to_file(players: List[Player], overwrite: bool = False):
     file_exists = os.path.isfile(PLAYERS_FILE)
@@ -111,130 +122,65 @@ def _parse_optional_int(val):
 def _parse_optional_float(val):
     return float(val) if val != "" else None
 
-def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[PitcherStats], overwrite: bool = False):
-    batting_stats_file_exists = os.path.isfile(BATTER_STATS_FILE)
-    pitching_stats_file_exists = os.path.isfile(PITCHER_STATS_FILE)
+def write_batter_stats(batter_stats: List[BatterStats], overwrite: bool = False):
+    """Write batting statistics to CSV file"""
+    file_exists = os.path.isfile(BATTER_STATS_FILE)
 
-    # Define headers
-    batter_headers = [
-        "player_id", "year", "window_years",
-        "games", "plate_appearances", "at_bats", "hits", "doubles", "triples", "home_runs",
-        "runs", "rbis", "stolen_bases", "caught_stealing", "walks", "strikeouts",
-        "batting_avg", "on_base_pct", "slugging_pct", "ops",
-        "wrc_plus", "war", "babip", "iso",
-        "bb_pct", "k_pct",
-        "hard_hit_pct", "barrel_pct"
-    ]
+    # Get headers directly from BatterStats dataclass
+    headers = _get_dataclass_headers(BatterStats)
 
-    pitcher_headers = [
-        "player_id", "year", "window_years",
-        "games", "games_started", "innings_pitched", "wins", "losses", "saves", "holds",
-        "strikeouts", "walks", "hits_allowed", "home_runs_allowed",
-        "era", "whip", "k_per_9", "bb_per_9",
-        "fip", "xfip", "siera", "war",
-        "k_pct", "bb_pct", "k_bb_ratio",
-        "ground_ball_pct", "fly_ball_pct", "hard_hit_pct"
-    ]
-
-    if overwrite and batting_stats_file_exists:
+    # Handle overwrite
+    if overwrite and file_exists:
         with open(BATTER_STATS_FILE, mode="w", newline="") as file:
             file.truncate()
             writer = csv.writer(file)
-            writer.writerow(batter_headers)
+            writer.writerow(headers)
 
-    if overwrite and pitching_stats_file_exists:
+    # Read existing stats to avoid duplicates
+    existing_stats = {stat.get_key(): stat for stat in read_batter_stats()}
+
+    # Write stats
+    with open(BATTER_STATS_FILE, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(headers)
+
+        for stat in batter_stats:
+            if stat.get_key() not in existing_stats:
+                writer.writerow(_get_dataclass_values(stat))
+
+
+def write_pitcher_stats(pitcher_stats: List[PitcherStats], overwrite: bool = False):
+    """Write pitching statistics to CSV file"""
+    file_exists = os.path.isfile(PITCHER_STATS_FILE)
+
+    # Get headers directly from PitcherStats dataclass
+    headers = _get_dataclass_headers(PitcherStats)
+
+    # Handle overwrite
+    if overwrite and file_exists:
         with open(PITCHER_STATS_FILE, mode="w", newline="") as file:
             file.truncate()
             writer = csv.writer(file)
-            writer.writerow(pitcher_headers)
+            writer.writerow(headers)
 
     # Read existing stats to avoid duplicates
-    current_stats = read_stats_from_file()
-    existing_batter_stats = {stat.get_key(): stat for stat in current_stats[0]}
-    existing_pitcher_stats = {stat.get_key(): stat for stat in current_stats[1]}
+    existing_stats = {stat.get_key(): stat for stat in read_pitcher_stats()}
 
-    # Write batter stats
-    with open(BATTER_STATS_FILE, mode="a", newline="") as file:
-        writer = csv.writer(file)
-        if not batting_stats_file_exists:
-            writer.writerow(batter_headers)
-
-        for stat in batter_stats:
-            # Use composite key from Stats base class
-            if stat.get_key() not in existing_batter_stats:
-                writer.writerow([
-                    stat.player_id,
-                    stat.year,
-                    stat.window_years,
-                    _optional_value(stat.games),
-                    _optional_value(stat.plate_appearances),
-                    _optional_value(stat.at_bats),
-                    _optional_value(stat.hits),
-                    _optional_value(stat.doubles),
-                    _optional_value(stat.triples),
-                    _optional_value(stat.home_runs),
-                    _optional_value(stat.runs),
-                    _optional_value(stat.rbis),
-                    _optional_value(stat.stolen_bases),
-                    _optional_value(stat.caught_stealing),
-                    _optional_value(stat.walks),
-                    _optional_value(stat.strikeouts),
-                    _optional_value(stat.batting_avg),
-                    _optional_value(stat.on_base_pct),
-                    _optional_value(stat.slugging_pct),
-                    _optional_value(stat.ops),
-                    _optional_value(stat.wrc_plus),
-                    _optional_value(stat.war),
-                    _optional_value(stat.babip),
-                    _optional_value(stat.iso),
-                    _optional_value(stat.bb_pct),
-                    _optional_value(stat.k_pct),
-                    _optional_value(stat.hard_hit_pct),
-                    _optional_value(stat.barrel_pct),
-                ])
-
-    # Write pitcher stats
+    # Write stats
     with open(PITCHER_STATS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
-        if not pitching_stats_file_exists:
-            writer.writerow(pitcher_headers)
+        if not file_exists:
+            writer.writerow(headers)
 
         for stat in pitcher_stats:
-            # Use composite key from Stats base class
-            if stat.get_key() not in existing_pitcher_stats:
-                writer.writerow([
-                    stat.player_id,
-                    stat.year,
-                    stat.window_years,
-                    _optional_value(stat.games),
-                    _optional_value(stat.games_started),
-                    _optional_value(stat.innings_pitched),
-                    _optional_value(stat.wins),
-                    _optional_value(stat.losses),
-                    _optional_value(stat.saves),
-                    _optional_value(stat.holds),
-                    _optional_value(stat.strikeouts),
-                    _optional_value(stat.walks),
-                    _optional_value(stat.hits_allowed),
-                    _optional_value(stat.home_runs_allowed),
-                    _optional_value(stat.era),
-                    _optional_value(stat.whip),
-                    _optional_value(stat.k_per_9),
-                    _optional_value(stat.bb_per_9),
-                    _optional_value(stat.fip),
-                    _optional_value(stat.xfip),
-                    _optional_value(stat.siera),
-                    _optional_value(stat.war),
-                    _optional_value(stat.k_pct),
-                    _optional_value(stat.bb_pct),
-                    _optional_value(stat.k_bb_ratio),
-                    _optional_value(stat.ground_ball_pct),
-                    _optional_value(stat.fly_ball_pct),
-                    _optional_value(stat.hard_hit_pct),
-                ])
+            if stat.get_key() not in existing_stats:
+                writer.writerow(_get_dataclass_values(stat))
 
-def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
-    batter_stats, pitcher_stats = [], []
+
+def read_batter_stats() -> List[BatterStats]:
+    """Read batting statistics from CSV file"""
+    batter_stats = []
 
     if os.path.isfile(BATTER_STATS_FILE):
         with open(BATTER_STATS_FILE, mode="r", newline="") as file:
@@ -270,7 +216,14 @@ def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
                     hard_hit_pct=_parse_optional_float(row["hard_hit_pct"]),
                     barrel_pct=_parse_optional_float(row["barrel_pct"]),
                 ))
-    
+
+    return batter_stats
+
+
+def read_pitcher_stats() -> List[PitcherStats]:
+    """Read pitching statistics from CSV file"""
+    pitcher_stats = []
+
     if os.path.isfile(PITCHER_STATS_FILE):
         with open(PITCHER_STATS_FILE, mode="r", newline="") as file:
             reader = csv.DictReader(file)
@@ -306,4 +259,15 @@ def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
                     hard_hit_pct=_parse_optional_float(row["hard_hit_pct"]),
                 ))
     
-    return batter_stats, pitcher_stats
+    return pitcher_stats
+
+
+def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[PitcherStats], overwrite: bool = False):
+    """Convenience function to write both batting and pitching stats in one call"""
+    write_batter_stats(batter_stats, overwrite)
+    write_pitcher_stats(pitcher_stats, overwrite)
+
+
+def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
+    """Convenience function to read both batting and pitching stats in one call"""
+    return read_batter_stats(), read_pitcher_stats()
