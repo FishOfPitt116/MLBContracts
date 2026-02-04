@@ -14,7 +14,7 @@ build: dataset
 
 dataset:
 	@echo "Assembling players and contracts dataset..."
-	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2025
+	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2026
 	@echo "Assembling stats dataset..."
 	$(PYTHON) -m $(STATS_DATASET_FILE)
 	@echo "Full dataset assembly complete."
