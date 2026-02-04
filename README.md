@@ -5,15 +5,14 @@ MLBContracts collects MLB player contract data, related player metadata, and sea
 This README explains repository layout, how to install dependencies, how to run data collection and analysis, and where outputs are stored. Previous code versions live under `archive/` and are kept for reference only.
 
 ## Table of contents
-- Project overview
-- Repository layout
-- Requirements & setup
-- Data collection
-- Analysis & visualization
-- Modeling & experiments
-- Tests
-- Archive
-- Contributing & license
+- [Project overview](#project-overview)
+- [Repository layout](#repository-layout-key-files--dirs)
+- [Requirements & setup](#requirements--setup)
+- [Data collection](#data-collection)
+- [Analysis & visualization](#analysis--visualization)
+- [Troubleshooting & tips](#troubleshooting--tips)
+- [Archive](#archive)
+- [Contributing](#contributing)
 
 ## Project overview
 - Source data is primarily scraped/assembled into CSV datasets and then used for EDA, plotting, and simple ML experiments.
