@@ -8,7 +8,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset analyze review-queue
+.PHONY: dataset analyze review-queue join
 
 build: dataset
 
@@ -27,3 +27,8 @@ analyze:
 review-queue:
 	@echo "Processing player review queue..."
 	$(PYTHON) -m data_generation.review_queue
+
+join:
+	@echo "Joining contracts with player stats..."
+	$(PYTHON) -m data_generation.join
+	@echo "Join complete!"
