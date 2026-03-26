@@ -1,5 +1,5 @@
-# Python interpreter
-PYTHON = PYTHONPATH=$(shell pwd) python3 
+# Python interpreter (uses venv)
+PYTHON = PYTHONPATH=$(shell pwd) .venv/bin/python
 
 # files
 # TODO: add more test directories here as they get created
@@ -8,7 +8,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset analyze review-queue join
+.PHONY: dataset dataset-auto analyze review-queue join
 
 build: dataset
 
@@ -17,6 +17,15 @@ dataset:
 	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2025
 	@echo "Assembling stats dataset..."
 	$(PYTHON) -m $(STATS_DATASET_FILE)
+	@echo "Full dataset assembly complete."
+
+dataset-auto:
+	@echo "Assembling players and contracts dataset (non-interactive)..."
+	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2025 --non-interactive
+	@echo "Assembling stats dataset..."
+	$(PYTHON) -m $(STATS_DATASET_FILE)
+	@echo "Joining contracts with stats..."
+	$(PYTHON) -m data_generation.join
 	@echo "Full dataset assembly complete."
 
 analyze:

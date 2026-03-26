@@ -3,7 +3,6 @@
 .idea
 .vscode
 __pycache__
-logs/
 .venv/
 
 best_model
