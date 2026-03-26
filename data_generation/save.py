@@ -4,7 +4,9 @@ from dataclasses import fields
 from datetime import datetime
 from typing import List, Tuple
 
-from .records import Player, Salary, BatterStats, PitcherStats
+import json
+
+from .records import Player, Salary, BatterStats, PitcherStats, ReviewQueueItem
 
 CURRENT_YEAR = datetime.now().year
 
@@ -12,6 +14,7 @@ PLAYERS_FILE = "dataset/players.csv"
 CONTRACTS_FILE = "dataset/contracts_spotrac.csv"
 BATTER_STATS_FILE = "dataset/batter_stats.csv"
 PITCHER_STATS_FILE = "dataset/pitcher_stats.csv"
+REVIEW_QUEUE_FILE = "dataset/review_queue.csv"
 
 def _get_dataclass_headers(dataclass_type) -> List[str]:
     """Extract field names from a dataclass to use as CSV headers"""
@@ -305,3 +308,70 @@ def write_stats_to_file(batter_stats: List[BatterStats], pitcher_stats: List[Pit
 def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
     """Convenience function to read both batting and pitching stats in one call"""
     return read_batter_stats(), read_pitcher_stats()
+
+
+def write_review_queue_item(item: ReviewQueueItem):
+    """Add a single item to the review queue"""
+    file_exists = os.path.isfile(REVIEW_QUEUE_FILE)
+    existing_items = {item.get_key(): item for item in read_review_queue()}
+
+    # Skip if already in queue
+    if item.get_key() in existing_items:
+        return
+
+    with open(REVIEW_QUEUE_FILE, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["first_name", "last_name", "contract_year", "spotrac_link", "candidates", "added_at"])
+        writer.writerow([
+            item.first_name,
+            item.last_name,
+            item.contract_year,
+            item.spotrac_link,
+            json.dumps(item.candidates),  # Store dict as JSON string
+            item.added_at.strftime("%Y-%m-%d %H:%M:%S")
+        ])
+
+
+def read_review_queue() -> List[ReviewQueueItem]:
+    """Read all items from the review queue"""
+    items = []
+    if not os.path.isfile(REVIEW_QUEUE_FILE):
+        return items
+
+    with open(REVIEW_QUEUE_FILE, mode="r", newline="") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            # Parse candidates JSON, converting string keys back to int
+            candidates_raw = json.loads(row["candidates"]) if row["candidates"] else {}
+            candidates = {int(k): v for k, v in candidates_raw.items()}
+
+            items.append(ReviewQueueItem(
+                first_name=row["first_name"],
+                last_name=row["last_name"],
+                contract_year=int(row["contract_year"]),
+                spotrac_link=row["spotrac_link"],
+                candidates=candidates,
+                added_at=datetime.strptime(row["added_at"], "%Y-%m-%d %H:%M:%S")
+            ))
+    return items
+
+
+def remove_review_queue_item(item: ReviewQueueItem):
+    """Remove an item from the review queue after it's been resolved"""
+    items = read_review_queue()
+    remaining = [i for i in items if i.get_key() != item.get_key()]
+
+    # Rewrite the file without the removed item
+    with open(REVIEW_QUEUE_FILE, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["first_name", "last_name", "contract_year", "spotrac_link", "candidates", "added_at"])
+        for i in remaining:
+            writer.writerow([
+                i.first_name,
+                i.last_name,
+                i.contract_year,
+                i.spotrac_link,
+                json.dumps(i.candidates),
+                i.added_at.strftime("%Y-%m-%d %H:%M:%S")
+            ])

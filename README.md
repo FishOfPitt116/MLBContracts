@@ -56,6 +56,12 @@ This README explains repository layout, how to install dependencies, how to run 
 - Contract collection optimization: Historical years (not current year) are cached and skipped on subsequent runs
   - Use `--overwrite` flag to force re-fetch: `python -m data_generation.spotrac --start-year 2011 --end-year 2025 --overwrite`
 - Stats collection optimization: Players without current-year data are skipped on subsequent runs
+- Non-interactive mode for automation:
+  ```bash
+  python -m data_generation.spotrac --start-year 2011 --end-year 2025 --non-interactive
+  ```
+  - Ambiguous player name matches are queued to `dataset/review_queue.csv` instead of prompting
+  - Process the queue later with `make review-queue` or `python -m data_generation.review_queue`
 - Output datasets:
   - `dataset/contracts_spotrac.csv` — Main contract table used by analysis
   - `dataset/batter_stats.csv` — Batting statistics (individual years and rolling windows)
@@ -95,6 +101,11 @@ This README explains repository layout, how to install dependencies, how to run 
   - Contracts dataset: `dataset/contracts_spotrac.csv`
   - Batter stats dataset: `dataset/batter_stats.csv`
   - Pitcher stats dataset: `dataset/pitcher_stats.csv`
+- **Players pending review**: After non-interactive runs, check and process queued players:
+  ```bash
+  make review-queue                                  # Interactive processing
+  python -m data_generation.review_queue --status   # View queue without processing
+  ```
 - **Data collection optimizations**:
   - Contract collection caches historical years—only current year (2026) is fetched on subsequent runs
   - Stats collection skips players not active in current year—only updates for current-year players

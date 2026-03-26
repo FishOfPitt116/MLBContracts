@@ -8,7 +8,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset analyze
+.PHONY: dataset analyze review-queue
 
 build: dataset
 
@@ -23,3 +23,7 @@ analyze:
 	@echo "Running contract analysis..."
 	$(PYTHON) $(ANALYSIS_FILE)
 	@echo "Contract analysis complete!"
+
+review-queue:
+	@echo "Processing player review queue..."
+	$(PYTHON) -m data_generation.review_queue

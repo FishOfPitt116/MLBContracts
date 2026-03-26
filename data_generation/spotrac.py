@@ -8,9 +8,11 @@ import requests
 import time
 from typing import Dict, List, Optional, Tuple
 
+# Global flag for non-interactive mode (set via CLI)
+
 from .log_stream import LogStream
-from .records import Player, Salary
-from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file
+from .records import Player, Salary, ReviewQueueItem
+from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file, write_review_queue_item
 
 CURRENT_YEAR = datetime.now().year
 
@@ -26,6 +28,9 @@ PLAYER_OBJECT_CACHE = {player.player_id: player for player in read_players_from_
 CONTRACT_OBJECT_CACHE = {contract.contract_id: contract for contract in read_contracts_from_file()}
 
 LOG_STREAM = LogStream("SPOTRAC DATA GENERATION")
+
+# Non-interactive mode flag - when True, ambiguous players are queued instead of prompting
+NON_INTERACTIVE = False
 
 def _year_exists_in_dataset(year: int) -> bool:
     """
@@ -63,7 +68,7 @@ def get_player_id(columns: List[Tag], headers: Dict[str, int]) -> str:
 
     return f"{name[1]}_{link_id}"
 
-def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy: bool = False) -> int:
+def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, spotrac_link: str = "", fuzzy: bool = False) -> int:
     # Handle names with periods by adding a space after the first period
     if "." in first_name:
         first_name = first_name.replace(".", ". ").strip()
@@ -78,13 +83,19 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
     if len(id_df) == 0:
         if not fuzzy:
             # if no players found, get fuzzy results
-            return get_fangraphs_id(first_name, last_name, contract_year, fuzzy=True)
+            return get_fangraphs_id(first_name, last_name, contract_year, spotrac_link, fuzzy=True)
+
+        # No matches found - queue for review or prompt
+        if NON_INTERACTIVE:
+            _queue_for_review(first_name, last_name, contract_year, spotrac_link, {})
+            return -1
+
         print(f"Could not find player with name {first_name} {last_name}. Please provide first and last name.\nIf you do not know the player's name, please enter 'exit' to not create this player object.")
         first_name = input("First Name: ")
         if first_name.lower() == "exit":
             return -1
         last_name = input("Last Name: ")
-        return get_fangraphs_id(first_name, last_name, contract_year, fuzzy=fuzzy)
+        return get_fangraphs_id(first_name, last_name, contract_year, spotrac_link, fuzzy=fuzzy)
 
     # Remove duplicate rows based on key_fangraphs
     id_df = id_df.drop_duplicates(subset=["key_fangraphs"])
@@ -102,7 +113,7 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
 
     # Apply contract year filtering
     filtered_df = id_df[
-        (id_df["mlb_played_first"] - 1 <= contract_year) & 
+        (id_df["mlb_played_first"] - 1 <= contract_year) &
         (id_df["mlb_played_last"] + 1 >= contract_year)
     ]
 
@@ -117,6 +128,12 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
         LOG_STREAM.player_mapping(first_name, last_name, id_df, 0, iloc=True, low_confidence=(0 in id_df.index))
         return id_df["key_fangraphs"].iloc[0]
 
+    # Multiple matches - queue for review or prompt
+    if NON_INTERACTIVE:
+        candidates = _build_candidates_dict(id_df)
+        _queue_for_review(first_name, last_name, contract_year, spotrac_link, candidates)
+        return -1
+
     print(f"Multiple players found with name {first_name} {last_name}. Please select the correct player from the list below. Type '-1' if none apply and the record will be ignored.")
     print(id_df)
     index = int(input("Enter the index number of the correct player: "))
@@ -124,6 +141,33 @@ def get_fangraphs_id(first_name: str, last_name: str, contract_year: int, fuzzy:
         return -1
     LOG_STREAM.player_mapping(first_name, last_name, id_df, index)
     return id_df["key_fangraphs"][index]
+
+
+def _build_candidates_dict(id_df: pd.DataFrame) -> Dict[int, str]:
+    """Build a dict of fangraphs_id -> display string for candidate players"""
+    candidates = {}
+    for _, row in id_df.iterrows():
+        fg_id = int(row["key_fangraphs"])
+        first = row.get("name_first", "")
+        last = row.get("name_last", "")
+        played_first = row.get("mlb_played_first", "?")
+        played_last = row.get("mlb_played_last", "?")
+        candidates[fg_id] = f"{first} {last} ({played_first}-{played_last})"
+    return candidates
+
+
+def _queue_for_review(first_name: str, last_name: str, contract_year: int, spotrac_link: str, candidates: Dict[int, str]):
+    """Add a player to the review queue for manual resolution"""
+    item = ReviewQueueItem(
+        first_name=first_name,
+        last_name=last_name,
+        contract_year=contract_year,
+        spotrac_link=spotrac_link,
+        candidates=candidates,
+        added_at=datetime.now()
+    )
+    write_review_queue_item(item)
+    print(f"  → Queued for review: {first_name} {last_name} ({contract_year})")
 
 def get_baseball_reference_link(fangraphs_id: int) -> str:
     player_df = playerid_reverse_lookup([fangraphs_id], key_type='fangraphs')
@@ -164,11 +208,11 @@ def extract_player_data(row: Tag, headers: Dict[str, int], contract_year: int) -
     if player_id in PLAYER_OBJECT_CACHE:
         return PLAYER_OBJECT_CACHE[player_id]
 
-    fangraphs_id = get_fangraphs_id(name[0], name[1], contract_year)
+    spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
+    fangraphs_id = get_fangraphs_id(name[0], name[1], contract_year, spotrac_link)
     if fangraphs_id == -1:
         return None
 
-    spotrac_link = sanitize_string(columns[headers['player']].find("a")["href"])
     baseball_reference_link = get_baseball_reference_link(fangraphs_id)
 
     birthday = get_player_birthday(baseball_reference_link)
@@ -259,7 +303,10 @@ def get_free_agent_records(year: int) -> Tuple[List[Player], List[Salary]]:
     extensions = get_records(VETERAN_EXTENSIONS_URL.format(year=year), year, "free-agent")
     return (contracts[0]+extensions[0], contracts[1]+extensions[1])
 
-def main(start_year, end_year=None, overwrite=False):
+def main(start_year, end_year=None, overwrite=False, non_interactive=False):
+    global NON_INTERACTIVE
+    NON_INTERACTIVE = non_interactive
+
     for year in range(start_year, end_year+1 if end_year else start_year+1):
         # Skip fetching if year already exists and is not the current year
         if not overwrite and _year_exists_in_dataset(year) and year != CURRENT_YEAR:
@@ -285,5 +332,6 @@ if __name__ == "__main__":
     args.add_argument("--start-year", type=int, required=True)
     args.add_argument("--end-year", type=int)
     args.add_argument("--overwrite", action="store_true", help="Force re-fetch of data even if year exists in dataset")
+    args.add_argument("--non-interactive", action="store_true", help="Queue ambiguous players for review instead of prompting")
     args = args.parse_args()
-    main(args.start_year, args.end_year, args.overwrite)
+    main(args.start_year, args.end_year, args.overwrite, args.non_interactive)

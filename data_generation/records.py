@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 @dataclass
 class Player:
@@ -116,3 +116,18 @@ class PitcherStats(Stats):
     ground_ball_pct: Optional[float] = None
     fly_ball_pct: Optional[float] = None
     hard_hit_pct: Optional[float] = None
+
+
+@dataclass
+class ReviewQueueItem:
+    """Represents a player that needs manual review for name matching"""
+    first_name: str
+    last_name: str
+    contract_year: int
+    spotrac_link: str
+    candidates: Dict[int, str]  # {fangraphs_id: "First Last (years played)"}
+    added_at: datetime
+
+    def get_key(self) -> Tuple[str, str, int]:
+        """Returns composite key for deduplication"""
+        return (self.first_name, self.last_name, self.contract_year)
