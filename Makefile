@@ -14,14 +14,14 @@ build: dataset
 
 dataset:
 	@echo "Assembling players and contracts dataset..."
-	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2025
+	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year $(shell date +%Y)
 	@echo "Assembling stats dataset..."
 	$(PYTHON) -m $(STATS_DATASET_FILE)
 	@echo "Full dataset assembly complete."
 
 dataset-auto:
 	@echo "Assembling players and contracts dataset (non-interactive)..."
-	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year 2025 --non-interactive
+	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year $(shell date +%Y) --non-interactive
 	@echo "Assembling stats dataset..."
 	$(PYTHON) -m $(STATS_DATASET_FILE)
 	@echo "Joining contracts with stats..."
