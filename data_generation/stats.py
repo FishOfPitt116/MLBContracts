@@ -166,6 +166,10 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
     print(f"{'='*60}\n")
 
     # Step 1: Get individual year stats (window_years = 1)
+    # Track years where player has single-year stats (for window stats filtering)
+    years_with_batting_stats = set()
+    years_with_pitching_stats = set()
+
     print("Collecting individual year stats...")
     for year in range(start_year, end_year + 1):
         try:
@@ -177,6 +181,7 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
 
             if not player_batting.empty:
                 print(f"  ✓ Found batting stats for {year}")
+                years_with_batting_stats.add(year)
                 batter_record = create_batter_stat_record(
                     internal_player_id,
                     year,
@@ -193,6 +198,7 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
 
             if not player_pitching.empty:
                 print(f"  ✓ Found pitching stats for {year}")
+                years_with_pitching_stats.add(year)
                 pitcher_record = create_pitcher_stat_record(
                     internal_player_id,
                     year,
@@ -208,6 +214,7 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
             continue
 
     # Step 2: Get accumulated stats in rolling windows
+    # Only create window stats for years where single-year stats exist
     print(f"\nCollecting accumulated stats (windows: {WINDOW_SIZES})...")
 
     for year in range(start_year, end_year + 1):
@@ -223,36 +230,42 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
 
             try:
                 # Accumulated batting stats
-                raw_accumulated_batting = batting_stats(window_start, year, ind=0, qual=0)
-                player_accumulated_batting = raw_accumulated_batting[
-                    raw_accumulated_batting['IDfg'] == fangraphs_player_id
-                ]
+                # For current year: only create if player has single-year stats (avoid misleading windows)
+                # For historical years: always create (handles gap years like Tommy John)
+                if year != CURRENT_YEAR or year in years_with_batting_stats:
+                    raw_accumulated_batting = batting_stats(window_start, year, ind=0, qual=0)
+                    player_accumulated_batting = raw_accumulated_batting[
+                        raw_accumulated_batting['IDfg'] == fangraphs_player_id
+                    ]
 
-                if not player_accumulated_batting.empty:
-                    print(f"  ✓ Found {window}yr batting window ending {year}")
-                    batter_record = create_batter_stat_record(
-                        internal_player_id,
-                        year,
-                        window_years=window,
-                        row=player_accumulated_batting.iloc[0]
-                    )
-                    batter_stats_list.append(batter_record)
+                    if not player_accumulated_batting.empty:
+                        print(f"  ✓ Found {window}yr batting window ending {year}")
+                        batter_record = create_batter_stat_record(
+                            internal_player_id,
+                            year,
+                            window_years=window,
+                            row=player_accumulated_batting.iloc[0]
+                        )
+                        batter_stats_list.append(batter_record)
 
                 # Accumulated pitching stats
-                raw_accumulated_pitching = pitching_stats(window_start, year, ind=0, qual=0)
-                player_accumulated_pitching = raw_accumulated_pitching[
-                    raw_accumulated_pitching['IDfg'] == fangraphs_player_id
-                ]
+                # For current year: only create if player has single-year stats (avoid misleading windows)
+                # For historical years: always create (handles gap years like Tommy John)
+                if year != CURRENT_YEAR or year in years_with_pitching_stats:
+                    raw_accumulated_pitching = pitching_stats(window_start, year, ind=0, qual=0)
+                    player_accumulated_pitching = raw_accumulated_pitching[
+                        raw_accumulated_pitching['IDfg'] == fangraphs_player_id
+                    ]
 
-                if not player_accumulated_pitching.empty:
-                    print(f"  ✓ Found {window}yr pitching window ending {year}")
-                    pitcher_record = create_pitcher_stat_record(
-                        internal_player_id,
-                        year,
-                        window_years=window,
-                        row=player_accumulated_pitching.iloc[0]
-                    )
-                    pitcher_stats_list.append(pitcher_record)
+                    if not player_accumulated_pitching.empty:
+                        print(f"  ✓ Found {window}yr pitching window ending {year}")
+                        pitcher_record = create_pitcher_stat_record(
+                            internal_player_id,
+                            year,
+                            window_years=window,
+                            row=player_accumulated_pitching.iloc[0]
+                        )
+                        pitcher_stats_list.append(pitcher_record)
 
             except Exception as e:
                 print(f"  ✗ Error fetching {window}yr window ending {year}: {e}")
