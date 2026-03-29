@@ -1,10 +1,12 @@
-from pybaseball import playerid_reverse_lookup, batting_stats, pitching_stats, cache
+from pybaseball import batting_stats, pitching_stats, cache
 from typing import Dict, List, Tuple
-import pandas as pd
 from datetime import datetime
+import pandas as pd
 
 from data_generation.records import BatterStats, PitcherStats
 from data_generation.save import read_players_from_file, write_stats_to_file, read_batter_stats, read_pitcher_stats
+from data_generation.player_lookup import get_career_span_from_stats, get_all_fangraphs_ids
+from data_generation.fangraphs_search import get_active_players_for_year, is_player_active_in_year, get_career_span_from_fangraphs
 
 CURRENT_YEAR = datetime.now().year
 
@@ -266,11 +268,15 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
 def main():
     """Main execution: process all players with FanGraphs IDs"""
     fg_player_ids = get_fangraphs_playerid_list()
-    player_data = playerid_reverse_lookup(list(fg_player_ids.keys()), key_type='fangraphs')
 
     # Load existing stats once to avoid repeated file reads
     existing_batter_stats = read_batter_stats()
     existing_pitcher_stats = read_pitcher_stats()
+
+    # Get active players for current year from FanGraphs
+    print(f"Fetching active players for {CURRENT_YEAR}...")
+    current_year_active = get_active_players_for_year(CURRENT_YEAR)
+    print(f"Found {len(current_year_active)} active players in {CURRENT_YEAR}")
 
     total_players = len(fg_player_ids)
     print(f"\n{'='*60}")
@@ -278,17 +284,23 @@ def main():
     print(f"{'='*60}\n")
 
     for idx, fangraphs_id in enumerate(fg_player_ids.keys(), 1):
-        player_info = player_data[player_data['key_fangraphs'] == fangraphs_id]
+        internal_player_id = fg_player_ids.get(fangraphs_id)
 
-        if not player_info.empty:
-            mlb_played_first = int(player_info['mlb_played_first'].values[0])
-            mlb_played_last = int(player_info['mlb_played_last'].values[0])
+        # Get career span from local stats data first
+        career_span = get_career_span_from_stats(internal_player_id)
 
-            print(f"\n[{idx}/{total_players}] Processing player {fg_player_ids.get(fangraphs_id)}")
-            print(f"Career: {mlb_played_first}-{mlb_played_last}")
+        if career_span:
+            mlb_played_first, mlb_played_last = career_span
+
+            # If player is active in current year, update their last year
+            if fangraphs_id in current_year_active:
+                mlb_played_last = max(mlb_played_last, CURRENT_YEAR)
+
+            print(f"\n[{idx}/{total_players}] Processing player {internal_player_id}")
+            print(f"Career: {mlb_played_first}-{mlb_played_last} (from local stats)")
 
             player_batter_stats, player_pitching_stats = assemble_stat_records(
-                fg_player_ids.get(fangraphs_id),
+                internal_player_id,
                 fangraphs_id,
                 mlb_played_first,
                 mlb_played_last,
@@ -297,13 +309,39 @@ def main():
             )
 
             if not player_batter_stats and not player_pitching_stats:
-                print(f"⚠ No new stats to write for {fg_player_ids.get(fangraphs_id)}")
+                print(f"⚠ No new stats to write for {internal_player_id}")
                 continue
             print(f"Writing records to file...")
             write_stats_to_file(player_batter_stats, player_pitching_stats)
-            print(f"✓ Completed {fg_player_ids.get(fangraphs_id)}")
+            print(f"✓ Completed {internal_player_id}")
         else:
-            print(f"⚠ No career info found for FanGraphs ID {fangraphs_id}")
+            # No local stats - try to get career span from FanGraphs
+            print(f"\n[{idx}/{total_players}] No local stats for {internal_player_id}")
+            print(f"Searching FanGraphs for career span...")
+
+            career_span = get_career_span_from_fangraphs(fangraphs_id)
+
+            if career_span:
+                mlb_played_first, mlb_played_last = career_span
+                print(f"Career: {mlb_played_first}-{mlb_played_last} (from FanGraphs)")
+
+                player_batter_stats, player_pitching_stats = assemble_stat_records(
+                    internal_player_id,
+                    fangraphs_id,
+                    mlb_played_first,
+                    mlb_played_last,
+                    existing_batter_stats,
+                    existing_pitcher_stats
+                )
+
+                if player_batter_stats or player_pitching_stats:
+                    print(f"Writing records to file...")
+                    write_stats_to_file(player_batter_stats, player_pitching_stats)
+                    print(f"✓ Completed {internal_player_id}")
+                else:
+                    print(f"⚠ No stats found for {internal_player_id}")
+            else:
+                print(f"⚠ Could not determine career span for FanGraphs ID {fangraphs_id} ({internal_player_id})")
 
     print(f"\n{'='*60}")
     print(f"Stats collection complete!")

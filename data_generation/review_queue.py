@@ -11,8 +11,8 @@ Once resolved, the player is added to the dataset and removed from the queue.
 """
 
 from argparse import ArgumentParser
-from pybaseball import playerid_lookup
-import pandas as pd
+from datetime import datetime
+from typing import Dict, List
 
 from .records import Player
 from .save import (
@@ -21,9 +21,13 @@ from .save import (
     write_players_to_file,
     read_players_from_file,
 )
-from .spotrac import (
-    get_baseball_reference_link,
-    get_player_birthday,
+from .player_lookup import (
+    get_players_by_name,
+    filter_players_by_year,
+    get_career_span_from_stats,
+)
+from .fangraphs_search import (
+    search_fangraphs_by_name_range,
 )
 
 
@@ -131,50 +135,71 @@ def process_queue():
 
 
 def search_player_interactive(contract_year: int) -> int:
-    """Interactive search for a player by name"""
+    """
+    Interactive search for a player by name.
+
+    Searches both local cache and FanGraphs stats directly,
+    combines results and deduplicates by FanGraphs ID.
+    """
     first_name = input("Enter first name: ").strip()
     last_name = input("Enter last name: ").strip()
 
     if not first_name or not last_name:
         return -1
 
-    id_df = playerid_lookup(last_name, first_name, fuzzy=True)
+    # Combine results from local cache and FanGraphs search
+    candidates: Dict[int, str] = {}
 
-    if id_df.empty:
+    # Step 1: Search local cache
+    cached_players = get_players_by_name(first_name, last_name)
+    filtered_cached = filter_players_by_year(cached_players, contract_year)
+
+    for player in filtered_cached:
+        career_span = get_career_span_from_stats(player.player_id)
+        if career_span:
+            candidates[player.fangraphs_id] = f"{player.first_name} {player.last_name} ({career_span[0]}-{career_span[1]}) [cached]"
+        else:
+            candidates[player.fangraphs_id] = f"{player.first_name} {player.last_name} (career unknown) [cached]"
+
+    # Step 2: Search FanGraphs stats directly
+    # Search around the contract year (+/- 2 years)
+    search_start = max(2000, contract_year - 2)
+    search_end = min(datetime.now().year, contract_year + 2)
+
+    fangraphs_results = search_fangraphs_by_name_range(first_name, last_name, search_start, search_end)
+
+    for result in fangraphs_results:
+        fg_id = result['fg_id']
+        if fg_id not in candidates:  # Don't overwrite cached results
+            first_year = result.get('first_year', '?')
+            last_year = result.get('last_year', '?')
+            candidates[fg_id] = f"{result['name']} ({first_year}-{last_year}) [FanGraphs]"
+
+    if not candidates:
         print("No players found.")
         return -1
 
-    # Filter by contract year
-    id_df["mlb_played_first"] = pd.to_numeric(id_df["mlb_played_first"], errors='coerce')
-    id_df["mlb_played_last"] = pd.to_numeric(id_df["mlb_played_last"], errors='coerce')
-    id_df = id_df.dropna(subset=["mlb_played_first", "mlb_played_last"])
-
-    filtered_df = id_df[
-        (id_df["mlb_played_first"] - 1 <= contract_year) &
-        (id_df["mlb_played_last"] + 1 >= contract_year)
-    ]
-
-    if filtered_df.empty:
-        print("No players found matching contract year.")
-        return -1
-
     print("\nMatches found:")
-    for i, (_, row) in enumerate(filtered_df.iterrows()):
-        print(f"  [{i}] {row['name_first']} {row['name_last']} ({int(row['mlb_played_first'])}-{int(row['mlb_played_last'])})")
+    candidate_list = list(candidates.items())
+    for i, (fg_id, desc) in enumerate(candidate_list):
+        print(f"  [{i}] {desc} (FanGraphs ID: {fg_id})")
 
     try:
-        idx = int(input("Select player number (-1 to cancel): "))
+        idx = int(input("\nSelect player number (-1 to cancel): "))
         if idx == -1:
             return -1
-        return int(filtered_df.iloc[idx]["key_fangraphs"])
+        if 0 <= idx < len(candidate_list):
+            return candidate_list[idx][0]
+        print("Invalid selection.")
+        return -1
     except (ValueError, IndexError):
         return -1
 
 
 def create_player_from_queue_item(item, fangraphs_id: int, existing_players: dict) -> Player:
     """Create a Player object from a queue item and selected FanGraphs ID"""
-    # Build player_id from spotrac link
-    link_id = item.spotrac_link.split("/")[-1]
+    # Build player_id from spotrac link - extract numeric ID: .../id/5166/max-scherzer -> 5166
+    link_id = item.spotrac_link.split("/id/")[1].split("/")[0]
     player_id = f"{item.last_name}_{link_id}"
 
     if player_id in existing_players:
@@ -182,20 +207,13 @@ def create_player_from_queue_item(item, fangraphs_id: int, existing_players: dic
         remove_review_queue_item(item)
         return None
 
-    print(f"Fetching player details for FanGraphs ID {fangraphs_id}...")
-
-    baseball_reference_link = get_baseball_reference_link(fangraphs_id)
-    birthday = get_player_birthday(baseball_reference_link) if baseball_reference_link else None
-
     return Player(
         player_id=player_id,
         fangraphs_id=fangraphs_id,
         first_name=item.first_name,
         last_name=item.last_name,
         position="",  # Will be filled in on next scrape
-        birth_date=birthday,
         spotrac_link=item.spotrac_link,
-        baseball_reference_link=baseball_reference_link
     )
 
 
