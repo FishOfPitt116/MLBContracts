@@ -9,9 +9,7 @@ class Player:
     first_name: str
     last_name: str
     position: str
-    birth_date: datetime
     spotrac_link: str
-    baseball_reference_link: str
 
 @dataclass
 class Salary:

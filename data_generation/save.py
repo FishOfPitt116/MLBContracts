@@ -33,12 +33,12 @@ def write_players_to_file(players: List[Player], overwrite: bool = False):
             # wipe existing file contents
             file.truncate()
             writer = csv.writer(file)
-            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "birth_date", "spotrac_link", "baseball_reference_link"])
+            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "spotrac_link"])
     existing_players = {player.player_id: player for player in read_players_from_file()}
     with open(PLAYERS_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
         if not file_exists:
-            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "birth_date", "spotrac_link", "baseball_reference_link"])
+            writer.writerow(["player_id", "fangraphs_id", "first_name", "last_name", "position", "spotrac_link"])
         for player in players:
             if player.player_id not in existing_players:
                 writer.writerow([
@@ -47,9 +47,7 @@ def write_players_to_file(players: List[Player], overwrite: bool = False):
                     player.first_name,
                     player.last_name,
                     player.position,
-                    player.birth_date.strftime("%Y-%m-%d") if player.birth_date else "",
                     player.spotrac_link or "",
-                    player.baseball_reference_link or ""
                 ])
 
 def read_players_from_file() -> List[Player]:
@@ -65,9 +63,7 @@ def read_players_from_file() -> List[Player]:
                 first_name=row["first_name"],
                 last_name=row["last_name"],
                 position=row["position"],
-                birth_date=datetime.strptime(row["birth_date"], "%Y-%m-%d") if row["birth_date"] != "" else None,
                 spotrac_link=row["spotrac_link"] if row["spotrac_link"] != "" else None,
-                baseball_reference_link=row["baseball_reference_link"] if row["baseball_reference_link"] != "" else None
             ))
     return players
 
