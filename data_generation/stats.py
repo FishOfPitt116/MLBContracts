@@ -267,6 +267,10 @@ def assemble_stat_records(internal_player_id: str, fangraphs_player_id: str, sta
 
 def main():
     """Main execution: process all players with FanGraphs IDs"""
+    # Clear stale cached data from previous runs to ensure fresh current-year stats
+    print("Clearing pybaseball cache...")
+    cache.purge()
+
     fg_player_ids = get_fangraphs_playerid_list()
 
     # Load existing stats once to avoid repeated file reads
