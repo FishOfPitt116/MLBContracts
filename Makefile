@@ -1,5 +1,6 @@
-# Python interpreter (uses venv)
-PYTHON = PYTHONPATH=$(shell pwd) .venv/bin/python
+# Python interpreter (uses venv if available, otherwise system python)
+PYTHON_BIN = $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; else echo python3; fi)
+PYTHON = PYTHONPATH=$(shell pwd) $(PYTHON_BIN)
 
 # files
 # TODO: add more test directories here as they get created
