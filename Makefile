@@ -38,6 +38,14 @@ review-queue:
 	@echo "Processing player review queue..."
 	$(PYTHON) -m data_generation.review_queue
 
+review-queue-agent:
+	@echo "Processing player review queue with agent..."
+	$(PYTHON) -m data_generation.review_queue_agent
+
+review-queue-agent-dry:
+	@echo "Processing player review queue with agent (dry run)..."
+	$(PYTHON) -m data_generation.review_queue_agent --dry-run --limit 10
+
 join:
 	@echo "Joining contracts with player stats..."
 	$(PYTHON) -m data_generation.join

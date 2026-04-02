@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from datetime import datetime
+import re
 import requests
 import time
 from typing import Dict, List, Optional, Tuple
@@ -354,6 +355,256 @@ def main(start_year, end_year=None, overwrite=False, non_interactive=False):
         write_players_to_file(pre_arb_players + arb_players + free_agent_players)
         write_contracts_to_file(pre_arb_salaries + arb_salaries + free_agent_salaries)
         print(f"Finished writing {year} records to file.")
+
+# =============================================================================
+# PLAYER PAGE SCRAPING (for review queue agent)
+# =============================================================================
+
+# Team abbreviation mappings for normalization
+TEAM_ABBREV_MAP = {
+    "ARI": "ARI", "Arizona": "ARI", "Arizona Diamondbacks": "ARI", "Diamondbacks": "ARI",
+    "ATL": "ATL", "Atlanta": "ATL", "Atlanta Braves": "ATL", "Braves": "ATL",
+    "BAL": "BAL", "Baltimore": "BAL", "Baltimore Orioles": "BAL", "Orioles": "BAL",
+    "BOS": "BOS", "Boston": "BOS", "Boston Red Sox": "BOS", "Red Sox": "BOS",
+    "CHC": "CHC", "Chicago Cubs": "CHC", "Cubs": "CHC",
+    "CHW": "CHW", "CWS": "CHW", "Chicago White Sox": "CHW", "White Sox": "CHW",
+    "CIN": "CIN", "Cincinnati": "CIN", "Cincinnati Reds": "CIN", "Reds": "CIN",
+    "CLE": "CLE", "Cleveland": "CLE", "Cleveland Guardians": "CLE", "Guardians": "CLE", "Indians": "CLE",
+    "COL": "COL", "Colorado": "COL", "Colorado Rockies": "COL", "Rockies": "COL",
+    "DET": "DET", "Detroit": "DET", "Detroit Tigers": "DET", "Tigers": "DET",
+    "HOU": "HOU", "Houston": "HOU", "Houston Astros": "HOU", "Astros": "HOU",
+    "KC": "KC", "KCR": "KC", "Kansas City": "KC", "Kansas City Royals": "KC", "Royals": "KC",
+    "LAA": "LAA", "Los Angeles Angels": "LAA", "Angels": "LAA", "Anaheim": "LAA",
+    "LAD": "LAD", "Los Angeles Dodgers": "LAD", "Dodgers": "LAD",
+    "MIA": "MIA", "FLA": "MIA", "Miami": "MIA", "Miami Marlins": "MIA", "Marlins": "MIA", "Florida Marlins": "MIA",
+    "MIL": "MIL", "Milwaukee": "MIL", "Milwaukee Brewers": "MIL", "Brewers": "MIL",
+    "MIN": "MIN", "Minnesota": "MIN", "Minnesota Twins": "MIN", "Twins": "MIN",
+    "NYM": "NYM", "New York Mets": "NYM", "Mets": "NYM",
+    "NYY": "NYY", "New York Yankees": "NYY", "Yankees": "NYY",
+    "OAK": "OAK", "Oakland": "OAK", "Oakland Athletics": "OAK", "Athletics": "OAK", "A's": "OAK",
+    "PHI": "PHI", "Philadelphia": "PHI", "Philadelphia Phillies": "PHI", "Phillies": "PHI",
+    "PIT": "PIT", "Pittsburgh": "PIT", "Pittsburgh Pirates": "PIT", "Pirates": "PIT",
+    "SD": "SD", "SDP": "SD", "San Diego": "SD", "San Diego Padres": "SD", "Padres": "SD",
+    "SF": "SF", "SFG": "SF", "San Francisco": "SF", "San Francisco Giants": "SF", "Giants": "SF",
+    "SEA": "SEA", "Seattle": "SEA", "Seattle Mariners": "SEA", "Mariners": "SEA",
+    "STL": "STL", "St. Louis": "STL", "St Louis": "STL", "St. Louis Cardinals": "STL", "Cardinals": "STL",
+    "TB": "TB", "TBR": "TB", "Tampa Bay": "TB", "Tampa Bay Rays": "TB", "Rays": "TB", "Devil Rays": "TB",
+    "TEX": "TEX", "Texas": "TEX", "Texas Rangers": "TEX", "Rangers": "TEX",
+    "TOR": "TOR", "Toronto": "TOR", "Toronto Blue Jays": "TOR", "Blue Jays": "TOR",
+    "WSH": "WSH", "WAS": "WSH", "Washington": "WSH", "Washington Nationals": "WSH", "Nationals": "WSH",
+}
+
+
+def normalize_team(team_str: str) -> str:
+    """Normalize team name/abbreviation to standard 2-3 letter code."""
+    if not team_str:
+        return ""
+    team_str = team_str.strip()
+    return TEAM_ABBREV_MAP.get(team_str, team_str)
+
+
+def get_player_page_contracts(spotrac_link: str) -> List[Dict]:
+    """
+    Get contract history from a player's Spotrac page.
+
+    Args:
+        spotrac_link: Full URL to the player's Spotrac page
+
+    Returns:
+        List of contract dicts with keys: year, team, value, contract_type
+        Returns empty list if page cannot be parsed.
+    """
+    soup = fetch_spotrac_data(spotrac_link)
+    if not soup:
+        return []
+
+    contracts = []
+
+    # Look for contract/salary tables on the page
+    tables = soup.find_all("table")
+    for table in tables:
+        headers = []
+        thead = table.find("thead")
+        if thead:
+            headers = [th.get_text().strip().lower() for th in thead.find_all("th")]
+
+        # Look for tables with year/season and salary/value columns
+        year_col = None
+        team_col = None
+        value_col = None
+        type_col = None
+
+        for i, h in enumerate(headers):
+            if "year" in h or "season" in h:
+                year_col = i
+            elif "team" in h:
+                team_col = i
+            elif "salary" in h or "value" in h or "avg" in h or "aav" in h:
+                value_col = i
+            elif "type" in h or "status" in h:
+                type_col = i
+
+        if year_col is not None:
+            tbody = table.find("tbody")
+            if tbody:
+                for row in tbody.find_all("tr"):
+                    cols = row.find_all("td")
+                    if len(cols) > year_col:
+                        try:
+                            year_text = cols[year_col].get_text().strip()
+                            year_match = re.search(r"20\d{2}", year_text)
+                            if year_match:
+                                year = int(year_match.group())
+                                contract = {"year": year}
+
+                                if team_col is not None and len(cols) > team_col:
+                                    team = cols[team_col].get_text().strip()
+                                    contract["team"] = normalize_team(team)
+
+                                if value_col is not None and len(cols) > value_col:
+                                    value_text = cols[value_col].get_text().strip()
+                                    value_text = value_text.replace("$", "").replace(",", "")
+                                    try:
+                                        contract["value"] = float(value_text) / 1_000_000
+                                    except ValueError:
+                                        contract["value"] = None
+
+                                if type_col is not None and len(cols) > type_col:
+                                    contract["contract_type"] = cols[type_col].get_text().strip()
+
+                                contracts.append(contract)
+                        except (ValueError, IndexError):
+                            continue
+
+    return contracts
+
+
+def get_player_page_position(spotrac_link: str) -> str:
+    """
+    Get player's primary position from Spotrac page.
+
+    Args:
+        spotrac_link: Full URL to the player's Spotrac page
+
+    Returns:
+        Position string (e.g., "SP", "CF", "1B") or empty string if not found.
+    """
+    soup = fetch_spotrac_data(spotrac_link)
+    if not soup:
+        return ""
+
+    position_patterns = [
+        r"\b(SP|RP|C|1B|2B|3B|SS|LF|CF|RF|OF|DH|P)\b",
+        r"Position[:\s]+([A-Z]{1,2})",
+    ]
+
+    # Check player info/header area
+    header = soup.find("div", class_=re.compile(r"player-?header|profile", re.I))
+    if header:
+        text = header.get_text()
+        for pattern in position_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1)
+
+    # Check the page title or h1
+    title = soup.find("h1")
+    if title:
+        text = title.get_text()
+        for pattern in position_patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1)
+
+    return ""
+
+
+def get_player_page_bio(spotrac_link: str) -> Dict:
+    """
+    Get biographical info from a player's Spotrac page.
+
+    Args:
+        spotrac_link: Full URL to the player's Spotrac page
+
+    Returns:
+        Dict with keys: birth_date (datetime or None), draft_year (int or None),
+        debut_year (int or None), teams (list of team abbreviations)
+    """
+    soup = fetch_spotrac_data(spotrac_link)
+    if not soup:
+        return {"birth_date": None, "draft_year": None, "debut_year": None, "teams": []}
+
+    bio = {
+        "birth_date": None,
+        "draft_year": None,
+        "debut_year": None,
+        "teams": [],
+    }
+
+    page_text = soup.get_text()
+
+    # Look for birth date patterns
+    birth_patterns = [
+        r"Born[:\s]+([A-Z][a-z]+ \d{1,2},? \d{4})",
+        r"Birth ?Date[:\s]+(\d{1,2}/\d{1,2}/\d{4})",
+        r"DOB[:\s]+(\d{1,2}/\d{1,2}/\d{4})",
+    ]
+
+    for pattern in birth_patterns:
+        match = re.search(pattern, page_text, re.I)
+        if match:
+            date_str = match.group(1)
+            for fmt in ["%B %d, %Y", "%B %d %Y", "%m/%d/%Y"]:
+                try:
+                    bio["birth_date"] = datetime.strptime(date_str, fmt)
+                    break
+                except ValueError:
+                    continue
+            if bio["birth_date"]:
+                break
+
+    # Look for draft year
+    draft_patterns = [
+        r"Draft(?:ed)?[:\s]+.*?(\d{4})",
+        r"(\d{4})\s+(?:MLB\s+)?Draft",
+    ]
+
+    for pattern in draft_patterns:
+        match = re.search(pattern, page_text, re.I)
+        if match:
+            year = int(match.group(1))
+            if 1990 <= year <= datetime.now().year:
+                bio["draft_year"] = year
+                break
+
+    # Look for MLB debut year
+    debut_patterns = [
+        r"MLB Debut[:\s]+.*?(\d{4})",
+        r"Debut[:\s]+.*?(\d{4})",
+    ]
+
+    for pattern in debut_patterns:
+        match = re.search(pattern, page_text, re.I)
+        if match:
+            year = int(match.group(1))
+            if 1990 <= year <= datetime.now().year:
+                bio["debut_year"] = year
+                break
+
+    # Extract teams from the page
+    team_links = soup.find_all("a", href=re.compile(r"/mlb/[a-z-]+/"))
+    for link in team_links:
+        href = link.get("href", "")
+        team_match = re.search(r"/mlb/([a-z-]+)/", href)
+        if team_match:
+            team_slug = team_match.group(1)
+            team_name = team_slug.replace("-", " ").title()
+            team_abbrev = normalize_team(team_name)
+            if team_abbrev and team_abbrev not in bio["teams"]:
+                bio["teams"].append(team_abbrev)
+
+    return bio
+
 
 if __name__ == "__main__":
     args = ArgumentParser()

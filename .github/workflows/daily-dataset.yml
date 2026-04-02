@@ -29,6 +29,11 @@ jobs:
       - name: Generate dataset
         run: make dataset-auto
 
+      - name: Run Review Queue Agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: make review-queue-agent
+
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
