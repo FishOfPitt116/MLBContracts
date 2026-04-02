@@ -32,7 +32,13 @@ jobs:
       - name: Run Review Queue Agent
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: make review-queue-agent
+        run: |
+          # Only run if OPENAI_API_KEY is set (skip if secret not configured yet)
+          if [ -n "$OPENAI_API_KEY" ]; then
+            make review-queue-agent
+          else
+            echo "OPENAI_API_KEY not set, skipping review queue agent"
+          fi
 
       - name: Commit and push changes
         run: |
