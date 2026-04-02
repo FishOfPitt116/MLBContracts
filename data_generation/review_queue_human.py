@@ -1,23 +1,38 @@
 """
-Review Queue Processor
+Review Queue Processor (Human Review)
 
-Interactively processes players that were queued during non-interactive scraping runs.
+Interactively processes players that the AI agent couldn't match after multiple attempts.
+These items have status=pending_human and include agent_notes explaining what was tried.
+
 For each queued player, allows the user to:
 1. Select from candidate matches
 2. Enter a different name to search
-3. Skip the player entirely
+3. Skip the player entirely (removes from queue)
+4. Mark as unresolvable (keeps in queue as resolved with no match)
 
 Once resolved, the player is added to the dataset and removed from the queue.
+
+Usage:
+    python -m data_generation.review_queue              # Process pending_human items
+    python -m data_generation.review_queue --status     # Show queue statistics
+    python -m data_generation.review_queue --all        # Process all items (including pending_agent)
 """
 
 from argparse import ArgumentParser
 from datetime import datetime
 from typing import Dict, List
 
-from .records import Player
+from .records import (
+    Player,
+    ReviewQueueItem,
+    QUEUE_STATUS_PENDING_AGENT,
+    QUEUE_STATUS_PENDING_HUMAN,
+    QUEUE_STATUS_RESOLVED,
+)
 from .save import (
     read_review_queue,
     remove_review_queue_item,
+    update_review_queue_item,
     write_players_to_file,
     read_players_from_file,
 )
@@ -32,33 +47,67 @@ from .fangraphs_search import (
 
 
 def display_queue_status():
-    """Show current queue status"""
+    """Show current queue status with breakdown by status"""
     queue = read_review_queue()
-    print(f"\n{'='*60}")
-    print(f"Review Queue: {len(queue)} players pending")
-    print(f"{'='*60}\n")
 
     if not queue:
-        print("No players in queue. Run with --non-interactive to populate.")
+        print("\nReview queue is empty.")
         return
 
-    for i, item in enumerate(queue, 1):
-        candidate_count = len(item.candidates)
-        print(f"  {i}. {item.first_name} {item.last_name} ({item.contract_year})")
-        print(f"     Candidates: {candidate_count}, Added: {item.added_at.strftime('%Y-%m-%d')}")
+    pending_agent = [i for i in queue if i.status == QUEUE_STATUS_PENDING_AGENT]
+    pending_human = [i for i in queue if i.status == QUEUE_STATUS_PENDING_HUMAN]
+    resolved = [i for i in queue if i.status == QUEUE_STATUS_RESOLVED]
+
+    print(f"\n{'='*60}")
+    print(f"Review Queue Status")
+    print(f"{'='*60}")
+    print(f"Total items:     {len(queue)}")
+    print(f"Pending (agent): {len(pending_agent)}")
+    print(f"Pending (human): {len(pending_human)}")
+    print(f"Resolved:        {len(resolved)}")
+    print(f"{'='*60}")
+
+    if pending_human:
+        print(f"\nItems awaiting human review:")
+        for i, item in enumerate(pending_human[:10], 1):
+            print(f"  {i}. {item.first_name} {item.last_name} ({item.contract_year})")
+            print(f"     Attempts: {item.attempt_count}, Added: {item.added_at.strftime('%Y-%m-%d')}")
+        if len(pending_human) > 10:
+            print(f"  ... and {len(pending_human) - 10} more")
+    else:
+        print("\nNo items awaiting human review.")
+        if pending_agent:
+            print(f"Run the agent first: python -m data_generation.review_queue_agent")
+
+    print()
 
 
-def process_queue():
-    """Interactively process all items in the review queue"""
-    queue = read_review_queue()
+def process_queue(include_all: bool = False):
+    """
+    Interactively process items in the review queue.
+
+    Args:
+        include_all: If True, process all items. If False, only process pending_human items.
+    """
+    all_items = read_review_queue()
+
+    if include_all:
+        queue = all_items
+    else:
+        queue = [item for item in all_items if item.status == QUEUE_STATUS_PENDING_HUMAN]
 
     if not queue:
-        print("No players in queue.")
+        if include_all:
+            print("No players in queue.")
+        else:
+            print("No players pending human review.")
+            print("Run the agent first: python -m data_generation.review_queue_agent")
         return
 
     existing_players = {p.player_id: p for p in read_players_from_file()}
     processed = 0
     skipped = 0
+    marked_unresolvable = 0
 
     print(f"\nProcessing {len(queue)} queued players...\n")
 
@@ -67,7 +116,18 @@ def process_queue():
         print(f"Player: {item.first_name} {item.last_name}")
         print(f"Contract Year: {item.contract_year}")
         print(f"Spotrac: {item.spotrac_link}")
+        print(f"Status: {item.status}")
+        print(f"Agent Attempts: {item.attempt_count}")
         print(f"{'='*60}")
+
+        # Show agent notes if available
+        if item.agent_notes:
+            print(f"\nAgent Notes:")
+            print("-" * 40)
+            # Format notes nicely
+            for line in item.agent_notes.split('\n'):
+                print(f"  {line}")
+            print("-" * 40)
 
         if item.candidates:
             print("\nCandidate matches:")
@@ -80,7 +140,8 @@ def process_queue():
         print("\nOptions:")
         print("  [0-N] Select a candidate by number")
         print("  [s]   Search for a different name")
-        print("  [x]   Skip this player")
+        print("  [x]   Skip this player (remove from queue)")
+        print("  [u]   Mark as unresolvable (minor leaguer, etc.)")
         print("  [q]   Quit processing")
 
         choice = input("\nChoice: ").strip().lower()
@@ -90,8 +151,17 @@ def process_queue():
             break
 
         if choice == 'x':
-            print(f"Skipping {item.first_name} {item.last_name}")
+            print(f"Removing {item.first_name} {item.last_name} from queue")
+            remove_review_queue_item(item)
             skipped += 1
+            continue
+
+        if choice == 'u':
+            print(f"Marking {item.first_name} {item.last_name} as unresolvable")
+            item.status = QUEUE_STATUS_RESOLVED
+            item.agent_notes += f"\n[Human Review] Marked as unresolvable - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            update_review_queue_item(item)
+            marked_unresolvable += 1
             continue
 
         if choice == 's':
@@ -130,7 +200,10 @@ def process_queue():
             skipped += 1
 
     print(f"\n{'='*60}")
-    print(f"Queue processing complete: {processed} added, {skipped} skipped")
+    print(f"Queue processing complete:")
+    print(f"  Added to dataset:      {processed}")
+    print(f"  Marked unresolvable:   {marked_unresolvable}")
+    print(f"  Skipped/removed:       {skipped}")
     print(f"{'='*60}\n")
 
 
@@ -166,6 +239,7 @@ def search_player_interactive(contract_year: int) -> int:
     search_start = max(2000, contract_year - 2)
     search_end = min(datetime.now().year, contract_year + 2)
 
+    print(f"Searching FanGraphs for {first_name} {last_name} ({search_start}-{search_end})...")
     fangraphs_results = search_fangraphs_by_name_range(first_name, last_name, search_start, search_end)
 
     for result in fangraphs_results:
@@ -196,7 +270,7 @@ def search_player_interactive(contract_year: int) -> int:
         return -1
 
 
-def create_player_from_queue_item(item, fangraphs_id: int, existing_players: dict) -> Player:
+def create_player_from_queue_item(item: ReviewQueueItem, fangraphs_id: int, existing_players: dict) -> Player:
     """Create a Player object from a queue item and selected FanGraphs ID"""
     # Build player_id from spotrac link - extract numeric ID: .../id/5166/max-scherzer -> 5166
     link_id = item.spotrac_link.split("/id/")[1].split("/")[0]
@@ -218,8 +292,9 @@ def create_player_from_queue_item(item, fangraphs_id: int, existing_players: dic
 
 
 def main():
-    parser = ArgumentParser(description="Process the player review queue")
+    parser = ArgumentParser(description="Process the player review queue (human review)")
     parser.add_argument("--status", action="store_true", help="Show queue status without processing")
+    parser.add_argument("--all", action="store_true", help="Process all items, not just pending_human")
     args = parser.parse_args()
 
     if args.status:
@@ -227,7 +302,7 @@ def main():
     else:
         display_queue_status()
         if input("\nProcess queue now? [y/N]: ").strip().lower() == 'y':
-            process_queue()
+            process_queue(include_all=args.all)
 
 
 if __name__ == "__main__":

@@ -9,14 +9,19 @@ Uses Strands SDK with GPT-4o-mini to:
 2. Search FanGraphs via pybaseball
 3. Reason about the match and commit or flag for human review
 
+The agent uses a retry mechanism:
+- Each player is attempted once per run
+- After MAX_AGENT_ATTEMPTS (3) failed attempts, status changes to pending_human
+- Human review then takes over for truly difficult cases
+
 Usage:
-    python -m data_generation.review_queue_agent              # Process all
+    python -m data_generation.review_queue_agent              # Process all pending
     python -m data_generation.review_queue_agent --dry-run    # Show reasoning only
     python -m data_generation.review_queue_agent --limit 10   # Process first 10
     python -m data_generation.review_queue_agent --verbose    # Detailed output
+    python -m data_generation.review_queue_agent --status     # Show queue stats
 """
 
-import csv
 import os
 import sys
 from argparse import ArgumentParser
@@ -28,10 +33,18 @@ from pybaseball import batting_stats, pitching_stats, cache
 # Enable pybaseball caching
 cache.enable()
 
-from .records import Player, ReviewQueueItem
+from .records import (
+    Player,
+    ReviewQueueItem,
+    QUEUE_STATUS_PENDING_AGENT,
+    QUEUE_STATUS_PENDING_HUMAN,
+    QUEUE_STATUS_RESOLVED,
+    MAX_AGENT_ATTEMPTS,
+)
 from .save import (
     read_review_queue,
     remove_review_queue_item,
+    update_review_queue_item,
     write_players_to_file,
     read_players_from_file,
 )
@@ -42,9 +55,6 @@ from .spotrac import (
     get_player_page_bio,
     normalize_team,
 )
-
-# File for logging flagged items
-HUMAN_REVIEW_LOG = "dataset/human_review_log.csv"
 
 
 # =============================================================================
@@ -58,6 +68,7 @@ For each queue item, you have:
 - spotrac_link: URL to their Spotrac page
 - contract_year: Year of the contract we're trying to match
 - candidates: Previous search results (may be empty or unreliable)
+- previous_notes: Notes from previous matching attempts (if any)
 
 WORKFLOW:
 1. Use Spotrac tools to understand WHO this player is:
@@ -65,10 +76,19 @@ WORKFLOW:
    - What position do they play? (get_spotrac_position)
    - Any other identifying info like draft year?
 
-2. Use PyBaseball tools to find matching players:
-   - Search by name (try variations if needed: B.J.→BJ, Mike→Michael, Christopher→Chris)
-   - Search by team + year if name search fails or returns too many
-   - Verify career timeline matches
+2. Use search_fangraphs_players() to find matching players. This is a flexible tool with optional filters:
+   - first_name, last_name: Search by name (try variations if needed)
+   - team: Filter by team abbreviation (NYY, LAD, etc.)
+   - year: Search a specific year
+   - start_year, end_year: Search a year range
+   - player_type: Filter by "batter" or "pitcher"
+
+   Search strategies:
+   - Start with full name: first_name="Mike", last_name="Trout"
+   - Try name variations: B.J.->BJ, Mike->Michael, Christopher->Chris
+   - If too many results, add team filter: last_name="Smith", team="NYY", year=2015
+   - If no results, try last name only: last_name="Carpenter"
+   - Combine filters to narrow down: last_name="Gonzalez", team="BAL", player_type="pitcher"
 
 3. If you find a confident match:
    - Call commit_match() with the FanGraphs ID and your reasoning
@@ -84,18 +104,20 @@ MATCHING RULES:
 - For common names with multiple candidates, use team history to disambiguate
 
 NAME VARIATIONS TO TRY:
-- B.J. / B. J. → BJ
-- Mike → Michael
-- Chris → Christopher
-- Matt → Matthew
-- Jonathon → Jon / Jonathan
-- Nate → Nathan / Nathaniel
-- Phil → Philip / Phillip
+- B.J. / B. J. -> BJ
+- Mike -> Michael
+- Chris -> Christopher
+- Matt -> Matthew
+- Jonathon -> Jon / Jonathan
+- Nate -> Nathan / Nathaniel
+- Phil -> Philip / Phillip
+- Vincente -> Vicente
 
 IMPORTANT:
 - Always call exactly ONE resolution tool (commit_match OR flag_for_review)
 - Never guess - if truly uncertain, flag for human review
-- Minor leaguers may not be in FanGraphs - flag these cases"""
+- Minor leaguers may not be in FanGraphs - flag these cases
+- If previous attempts failed, try different approaches before flagging again"""
 
 
 # =============================================================================
@@ -105,43 +127,18 @@ IMPORTANT:
 # --- Spotrac Tools ---
 
 def tool_get_spotrac_contracts(spotrac_link: str) -> List[Dict]:
-    """
-    Get contract history from a player's Spotrac page.
-
-    Returns list of contracts with year, team, value, and contract_type.
-    Use this to understand what teams the player played for.
-
-    Args:
-        spotrac_link: Full URL to the player's Spotrac page
-    """
+    """Get contract history from a player's Spotrac page."""
     return get_player_page_contracts(spotrac_link)
 
 
 def tool_get_spotrac_position(spotrac_link: str) -> str:
-    """
-    Get player's primary position from Spotrac page.
-
-    Returns position code like "SP", "CF", "1B", etc.
-    Use this to verify pitcher vs batter and filter searches.
-
-    Args:
-        spotrac_link: Full URL to the player's Spotrac page
-    """
+    """Get player's primary position from Spotrac page."""
     return get_player_page_position(spotrac_link)
 
 
 def tool_get_spotrac_bio(spotrac_link: str) -> Dict:
-    """
-    Get biographical info from a player's Spotrac page.
-
-    Returns birth_date, draft_year, debut_year, and teams list.
-    Useful for narrowing down player identity.
-
-    Args:
-        spotrac_link: Full URL to the player's Spotrac page
-    """
+    """Get biographical info from a player's Spotrac page."""
     result = get_player_page_bio(spotrac_link)
-    # Convert datetime to string for JSON serialization
     if result.get("birth_date"):
         result["birth_date"] = result["birth_date"].strftime("%Y-%m-%d")
     return result
@@ -149,193 +146,142 @@ def tool_get_spotrac_bio(spotrac_link: str) -> Dict:
 
 # --- PyBaseball Tools ---
 
-def tool_search_players_by_name(first_name: str, last_name: str, start_year: int = 2010, end_year: int = None) -> List[Dict]:
+def tool_search_fangraphs_players(
+    first_name: str = None,
+    last_name: str = None,
+    team: str = None,
+    year: int = None,
+    start_year: int = None,
+    end_year: int = None,
+    player_type: str = None,
+) -> List[Dict]:
     """
-    Search FanGraphs for players by name across a range of years.
+    Flexible search for players in FanGraphs database.
 
-    Returns list of matching players with fg_id, name, first_year, last_year.
-    Handles name normalization (accents, periods, etc.)
+    All parameters are optional, but at least one of first_name, last_name, or team must be provided.
 
     Args:
-        first_name: Player's first name
-        last_name: Player's last name
-        start_year: First year to search (default 2010)
-        end_year: Last year to search (default current year)
-    """
-    if end_year is None:
-        end_year = datetime.now().year
+        first_name: Filter by first name (uses normalized matching for accents, periods, etc.)
+        last_name: Filter by last name (uses normalized matching)
+        team: Filter by team abbreviation (e.g., "NYY", "LAD", "TEX")
+        year: Search only this specific year
+        start_year: Start of year range to search (default: 2008)
+        end_year: End of year range to search (default: current year)
+        player_type: Filter by "batter" or "pitcher" (default: search both)
 
-    first_normalized = normalize_name(first_name)
-    last_normalized = normalize_name(last_name)
+    Returns:
+        List of matching players with fg_id, name, first_year, last_year, type, teams
+
+    Examples:
+        - Search by full name: first_name="Mike", last_name="Trout"
+        - Search by last name only: last_name="Smith" (returns all Smiths)
+        - Search by team and year: team="NYY", year=2015
+        - Search pitchers named David: first_name="David", player_type="pitcher"
+        - Combine filters: last_name="Carpenter", team="ATL", start_year=2013, end_year=2015
+    """
+    # Validate inputs
+    if not any([first_name, last_name, team]):
+        return [{"error": "Must provide at least one of: first_name, last_name, or team"}]
+
+    # Normalize team if provided
+    if team:
+        team = normalize_team(team)
+
+    # Set year range
+    current_year = datetime.now().year
+    if year:
+        # Single year search
+        search_start = year
+        search_end = year
+    else:
+        search_start = start_year if start_year else 2008
+        search_end = end_year if end_year else current_year
+
+    # Normalize names for comparison
+    first_normalized = normalize_name(first_name) if first_name else None
+    last_normalized = normalize_name(last_name) if last_name else None
 
     results_by_id: Dict[int, Dict] = {}
 
-    for year in range(start_year, end_year + 1):
-        try:
-            # Search batting stats
-            batting = batting_stats(year, qual=0)
-            if not batting.empty and 'Name' in batting.columns and 'IDfg' in batting.columns:
-                for _, row in batting.iterrows():
-                    name = str(row['Name'])
-                    parts = name.split(" ", 1)
-                    if len(parts) == 2:
-                        fg_first, fg_last = parts
-                        if (normalize_name(fg_first) == first_normalized and
-                            normalize_name(fg_last) == last_normalized):
-                            fg_id = int(row['IDfg'])
-                            if fg_id not in results_by_id:
-                                results_by_id[fg_id] = {
-                                    'fg_id': fg_id,
-                                    'name': name,
-                                    'first_year': year,
-                                    'last_year': year,
-                                    'type': 'batter'
-                                }
-                            else:
-                                results_by_id[fg_id]['first_year'] = min(results_by_id[fg_id]['first_year'], year)
-                                results_by_id[fg_id]['last_year'] = max(results_by_id[fg_id]['last_year'], year)
-        except Exception:
-            pass
+    def matches_filters(row, stats_type: str) -> bool:
+        """Check if a row matches all provided filters."""
+        # Check player type filter
+        if player_type:
+            if player_type == "batter" and stats_type != "batter":
+                return False
+            if player_type == "pitcher" and stats_type != "pitcher":
+                return False
 
-        try:
-            # Search pitching stats
-            pitching = pitching_stats(year, qual=0)
-            if not pitching.empty and 'Name' in pitching.columns and 'IDfg' in pitching.columns:
-                for _, row in pitching.iterrows():
-                    name = str(row['Name'])
-                    parts = name.split(" ", 1)
-                    if len(parts) == 2:
-                        fg_first, fg_last = parts
-                        if (normalize_name(fg_first) == first_normalized and
-                            normalize_name(fg_last) == last_normalized):
-                            fg_id = int(row['IDfg'])
-                            if fg_id not in results_by_id:
-                                results_by_id[fg_id] = {
-                                    'fg_id': fg_id,
-                                    'name': name,
-                                    'first_year': year,
-                                    'last_year': year,
-                                    'type': 'pitcher'
-                                }
-                            else:
-                                results_by_id[fg_id]['first_year'] = min(results_by_id[fg_id]['first_year'], year)
-                                results_by_id[fg_id]['last_year'] = max(results_by_id[fg_id]['last_year'], year)
-        except Exception:
-            pass
+        # Check name filters
+        name = str(row['Name'])
+        parts = name.split(" ", 1)
+        if len(parts) != 2:
+            return False
+
+        fg_first, fg_last = parts
+
+        if first_normalized and normalize_name(fg_first) != first_normalized:
+            return False
+        if last_normalized and normalize_name(fg_last) != last_normalized:
+            return False
+
+        # Check team filter
+        if team:
+            row_team = normalize_team(str(row.get('Team', '')))
+            if row_team != team:
+                return False
+
+        return True
+
+    def add_result(row, year: int, stats_type: str):
+        """Add or update a result entry."""
+        fg_id = int(row['IDfg'])
+        row_team = str(row.get('Team', ''))
+
+        if fg_id not in results_by_id:
+            results_by_id[fg_id] = {
+                'fg_id': fg_id,
+                'name': row['Name'],
+                'first_year': year,
+                'last_year': year,
+                'type': stats_type,
+                'teams': [row_team] if row_team else []
+            }
+        else:
+            results_by_id[fg_id]['first_year'] = min(results_by_id[fg_id]['first_year'], year)
+            results_by_id[fg_id]['last_year'] = max(results_by_id[fg_id]['last_year'], year)
+            if row_team and row_team not in results_by_id[fg_id]['teams']:
+                results_by_id[fg_id]['teams'].append(row_team)
+
+    # Search through years
+    for search_year in range(search_start, search_end + 1):
+        # Search batting stats (unless filtering for pitchers only)
+        if player_type != "pitcher":
+            try:
+                batting = batting_stats(search_year, qual=0)
+                if not batting.empty and 'Name' in batting.columns and 'IDfg' in batting.columns:
+                    for _, row in batting.iterrows():
+                        if matches_filters(row, "batter"):
+                            add_result(row, search_year, "batter")
+            except Exception:
+                pass
+
+        # Search pitching stats (unless filtering for batters only)
+        if player_type != "batter":
+            try:
+                pitching = pitching_stats(search_year, qual=0)
+                if not pitching.empty and 'Name' in pitching.columns and 'IDfg' in pitching.columns:
+                    for _, row in pitching.iterrows():
+                        if matches_filters(row, "pitcher"):
+                            add_result(row, search_year, "pitcher")
+            except Exception:
+                pass
 
     return list(results_by_id.values())
 
 
-def tool_search_players_by_team_year(team: str, year: int, position: str = None) -> List[Dict]:
-    """
-    Find all players on a team in a given year.
-
-    Returns list of players with fg_id, name, position.
-    Use this when name search returns multiple candidates and you know the team.
-
-    Args:
-        team: Team abbreviation (e.g., "NYY", "LAD", "TEX")
-        year: Season year
-        position: Optional position filter ("P" for pitchers, None for batters)
-    """
-    team = normalize_team(team)
-
-    results = []
-    seen_ids = set()
-
-    try:
-        if position != "P":
-            batting = batting_stats(year, qual=0)
-            if not batting.empty and 'Team' in batting.columns:
-                for _, row in batting.iterrows():
-                    if normalize_team(str(row['Team'])) == team:
-                        fg_id = int(row['IDfg'])
-                        if fg_id not in seen_ids:
-                            seen_ids.add(fg_id)
-                            results.append({
-                                'fg_id': fg_id,
-                                'name': row['Name'],
-                                'team': team,
-                                'year': year,
-                            })
-    except Exception:
-        pass
-
-    try:
-        if position is None or position == "P":
-            pitching = pitching_stats(year, qual=0)
-            if not pitching.empty and 'Team' in pitching.columns:
-                for _, row in pitching.iterrows():
-                    if normalize_team(str(row['Team'])) == team:
-                        fg_id = int(row['IDfg'])
-                        if fg_id not in seen_ids:
-                            seen_ids.add(fg_id)
-                            results.append({
-                                'fg_id': fg_id,
-                                'name': row['Name'],
-                                'team': team,
-                                'year': year,
-                            })
-    except Exception:
-        pass
-
-    return results
-
-
-def tool_get_player_career_range(fangraphs_id: int) -> Dict:
-    """
-    Get first and last year a player was active in FanGraphs.
-
-    Returns dict with first_year, last_year.
-    Use this to verify career timeline matches contract year.
-
-    Args:
-        fangraphs_id: FanGraphs player ID
-    """
-    first_year = None
-    last_year = None
-    current_year = datetime.now().year
-
-    # Check years from 2000 to current
-    for year in range(2000, current_year + 1):
-        try:
-            batting = batting_stats(year, qual=0)
-            if not batting.empty and 'IDfg' in batting.columns:
-                if fangraphs_id in batting['IDfg'].values:
-                    if first_year is None:
-                        first_year = year
-                    last_year = year
-        except Exception:
-            pass
-
-        try:
-            pitching = pitching_stats(year, qual=0)
-            if not pitching.empty and 'IDfg' in pitching.columns:
-                if fangraphs_id in pitching['IDfg'].values:
-                    if first_year is None:
-                        first_year = year
-                    last_year = year
-        except Exception:
-            pass
-
-    return {
-        'fg_id': fangraphs_id,
-        'first_year': first_year,
-        'last_year': last_year,
-    }
-
-
 def tool_get_player_season_stats(fangraphs_id: int, year: int) -> Dict:
-    """
-    Get a player's stats for a specific season.
-
-    Returns dict with team, stats type (batting/pitching), and key stats.
-    Use this to verify a player was active in a specific year.
-
-    Args:
-        fangraphs_id: FanGraphs player ID
-        year: Season year
-    """
+    """Get a player's stats for a specific season to verify they were active."""
     result = {
         'fg_id': fangraphs_id,
         'year': year,
@@ -385,13 +331,7 @@ _existing_players: Dict[str, Player] = {}
 def tool_commit_match(fangraphs_id: int, reasoning: str) -> Dict:
     """
     Commit a match - associate the FanGraphs ID with this player.
-
     Call this when you're confident about the match.
-    The player will be added to the dataset and removed from the queue.
-
-    Args:
-        fangraphs_id: The FanGraphs player ID to associate
-        reasoning: Brief explanation of why this is the correct match
     """
     global _resolution_result
 
@@ -436,13 +376,8 @@ def tool_commit_match(fangraphs_id: int, reasoning: str) -> Dict:
 
 def tool_flag_for_review(reasoning: str) -> Dict:
     """
-    Flag this player for human review.
-
-    Call this when you cannot find a confident match.
-    The player will be logged for manual review but remain in the queue.
-
-    Args:
-        reasoning: Explanation of what you tried and why you're uncertain
+    Flag this player - you couldn't find a confident match.
+    The attempt count will be incremented and reasoning recorded.
     """
     global _resolution_result
 
@@ -454,25 +389,8 @@ def tool_flag_for_review(reasoning: str) -> Dict:
         "reasoning": reasoning,
     }
 
-    if not _dry_run:
-        # Log to human review file
-        file_exists = os.path.isfile(HUMAN_REVIEW_LOG)
-        with open(HUMAN_REVIEW_LOG, mode="a", newline="") as file:
-            writer = csv.writer(file)
-            if not file_exists:
-                writer.writerow(["first_name", "last_name", "contract_year", "spotrac_link", "reasoning", "flagged_at"])
-            writer.writerow([
-                _current_item.first_name,
-                _current_item.last_name,
-                _current_item.contract_year,
-                _current_item.spotrac_link,
-                reasoning,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            ])
-        # Remove from queue since it's now in the human review log
-        remove_review_queue_item(_current_item)
-
-    return {"success": True, "action": "flagged_for_review"}
+    # Note: The actual queue update happens in process_queue_item after we return
+    return {"success": True, "action": "flagged"}
 
 
 # =============================================================================
@@ -520,19 +438,42 @@ def create_agent():
         return tool_get_spotrac_bio(spotrac_link)
 
     @tool
-    def search_players_by_name(first_name: str, last_name: str, start_year: int = 2010, end_year: int = None) -> List[Dict]:
-        """Search FanGraphs for players by name. Returns list of matching players with fg_id, name, first_year, last_year. Try name variations if no results."""
-        return tool_search_players_by_name(first_name, last_name, start_year, end_year)
+    def search_fangraphs_players(
+        first_name: str = None,
+        last_name: str = None,
+        team: str = None,
+        year: int = None,
+        start_year: int = None,
+        end_year: int = None,
+        player_type: str = None,
+    ) -> List[Dict]:
+        """
+        Flexible search for players in FanGraphs. All parameters optional but must provide at least one of first_name, last_name, or team.
 
-    @tool
-    def search_players_by_team_year(team: str, year: int, position: str = None) -> List[Dict]:
-        """Find all players on a team in a given year. Returns list with fg_id, name. Use when you know the team from Spotrac."""
-        return tool_search_players_by_team_year(team, year, position)
+        Args:
+            first_name: Filter by first name (normalized matching handles accents, periods)
+            last_name: Filter by last name
+            team: Filter by team abbreviation (NYY, LAD, TEX, etc.)
+            year: Search only this specific year
+            start_year: Start of year range (default 2008)
+            end_year: End of year range (default current year)
+            player_type: Filter by "batter" or "pitcher"
 
-    @tool
-    def get_player_career_range(fangraphs_id: int) -> Dict:
-        """Get first and last year a player was active. Use to verify career timeline matches contract year."""
-        return tool_get_player_career_range(fangraphs_id)
+        Examples:
+            - Full name: first_name="Mike", last_name="Trout"
+            - Last name only: last_name="Smith"
+            - Team + year: team="NYY", year=2015
+            - Combine: last_name="Carpenter", team="ATL", year=2013
+        """
+        return tool_search_fangraphs_players(
+            first_name=first_name,
+            last_name=last_name,
+            team=team,
+            year=year,
+            start_year=start_year,
+            end_year=end_year,
+            player_type=player_type,
+        )
 
     @tool
     def get_player_season_stats(fangraphs_id: int, year: int) -> Dict:
@@ -546,7 +487,7 @@ def create_agent():
 
     @tool
     def flag_for_review(reasoning: str) -> Dict:
-        """Flag this player for human review. Call when you cannot find a confident match."""
+        """Flag this player - you couldn't find a confident match. Explain what you tried."""
         return tool_flag_for_review(reasoning)
 
     # Create agent with all tools
@@ -557,9 +498,7 @@ def create_agent():
             get_spotrac_contracts,
             get_spotrac_position,
             get_spotrac_bio,
-            search_players_by_name,
-            search_players_by_team_year,
-            get_player_career_range,
+            search_fangraphs_players,
             get_player_season_stats,
             commit_match,
             flag_for_review,
@@ -587,6 +526,10 @@ def process_queue_item(agent, item: ReviewQueueItem, verbose: bool = False) -> D
     else:
         candidates_str = "  (no previous candidates)"
 
+    previous_notes = ""
+    if item.agent_notes:
+        previous_notes = f"\n\nPrevious Attempt Notes (attempt {item.attempt_count}):\n{item.agent_notes}"
+
     prompt = f"""Please match this player to their FanGraphs ID:
 
 Player Name: {item.first_name} {item.last_name}
@@ -594,7 +537,7 @@ Spotrac Link: {item.spotrac_link}
 Contract Year: {item.contract_year}
 
 Previous Candidate Matches:
-{candidates_str}
+{candidates_str}{previous_notes}
 
 Use the available tools to gather information and then call either commit_match() or flag_for_review()."""
 
@@ -602,6 +545,7 @@ Use the available tools to gather information and then call either commit_match(
         print(f"\n{'='*60}")
         print(f"Processing: {item.first_name} {item.last_name} ({item.contract_year})")
         print(f"Spotrac: {item.spotrac_link}")
+        print(f"Attempt: {item.attempt_count + 1}/{MAX_AGENT_ATTEMPTS}")
         print(f"{'='*60}")
 
     # Run the agent
@@ -620,6 +564,36 @@ Use the available tools to gather information and then call either commit_match(
         return {"action": "error", "reason": str(e)}
 
 
+def show_queue_status():
+    """Display statistics about the review queue."""
+    queue = read_review_queue()
+
+    if not queue:
+        print("Review queue is empty.")
+        return
+
+    pending_agent = [i for i in queue if i.status == QUEUE_STATUS_PENDING_AGENT]
+    pending_human = [i for i in queue if i.status == QUEUE_STATUS_PENDING_HUMAN]
+    resolved = [i for i in queue if i.status == QUEUE_STATUS_RESOLVED]
+
+    # Count by attempt level
+    by_attempts = {}
+    for item in pending_agent:
+        by_attempts[item.attempt_count] = by_attempts.get(item.attempt_count, 0) + 1
+
+    print(f"\n{'='*60}")
+    print(f"Review Queue Status")
+    print(f"{'='*60}")
+    print(f"Total items:     {len(queue)}")
+    print(f"Pending (agent): {len(pending_agent)}")
+    print(f"Pending (human): {len(pending_human)}")
+    print(f"Resolved:        {len(resolved)}")
+    print(f"\nPending agent items by attempt count:")
+    for attempts in sorted(by_attempts.keys()):
+        print(f"  {attempts} attempts: {by_attempts[attempts]}")
+    print(f"{'='*60}\n")
+
+
 def run_agent(limit: int = None, dry_run: bool = False, verbose: bool = False):
     """Run the review queue agent."""
     global _dry_run, _existing_players
@@ -627,10 +601,13 @@ def run_agent(limit: int = None, dry_run: bool = False, verbose: bool = False):
     _dry_run = dry_run
     _existing_players = {p.player_id: p for p in read_players_from_file()}
 
-    queue = read_review_queue()
+    # Read queue and filter to items needing agent review
+    all_items = read_review_queue()
+    queue = [item for item in all_items if item.needs_agent_review()]
 
     if not queue:
-        print("No players in review queue.")
+        print("No players pending agent review.")
+        show_queue_status()
         return
 
     if limit:
@@ -639,7 +616,7 @@ def run_agent(limit: int = None, dry_run: bool = False, verbose: bool = False):
     print(f"\n{'='*60}")
     print(f"Review Queue Agent")
     print(f"{'='*60}")
-    print(f"Queue size: {len(queue)} players")
+    print(f"Items to process: {len(queue)}")
     print(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     print(f"{'='*60}\n")
 
@@ -649,23 +626,57 @@ def run_agent(limit: int = None, dry_run: bool = False, verbose: bool = False):
     # Track results
     committed = 0
     flagged = 0
+    escalated = 0  # Moved to pending_human
     errors = 0
 
     for i, item in enumerate(queue, 1):
-        print(f"\n[{i}/{len(queue)}] {item.first_name} {item.last_name} ({item.contract_year})")
+        print(f"\n[{i}/{len(queue)}] {item.first_name} {item.last_name} ({item.contract_year}) - attempt {item.attempt_count + 1}/{MAX_AGENT_ATTEMPTS}")
 
         result = process_queue_item(agent, item, verbose)
 
         if result.get("action") == "commit":
             print(f"  -> MATCHED: FG ID {result.get('fangraphs_id')}")
-            print(f"     Reasoning: {result.get('reasoning', 'N/A')[:80]}...")
+            if result.get('reasoning'):
+                print(f"     Reasoning: {result.get('reasoning', 'N/A')[:80]}...")
             committed += 1
+
         elif result.get("action") == "flag":
-            print(f"  -> FLAGGED for human review")
-            print(f"     Reasoning: {result.get('reasoning', 'N/A')[:80]}...")
-            flagged += 1
+            reasoning = result.get('reasoning', 'No reasoning provided')
+            new_attempt_count = item.attempt_count + 1
+
+            # Append reasoning to notes
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            new_note = f"[Attempt {new_attempt_count} - {timestamp}] {reasoning}"
+            if item.agent_notes:
+                new_notes = f"{item.agent_notes}\n{new_note}"
+            else:
+                new_notes = new_note
+
+            if new_attempt_count >= MAX_AGENT_ATTEMPTS:
+                # Escalate to human review
+                print(f"  -> ESCALATED to human review after {MAX_AGENT_ATTEMPTS} attempts")
+                print(f"     Last reasoning: {reasoning[:80]}...")
+                if not _dry_run:
+                    item.attempt_count = new_attempt_count
+                    item.status = QUEUE_STATUS_PENDING_HUMAN
+                    item.agent_notes = new_notes
+                    update_review_queue_item(item)
+                escalated += 1
+            else:
+                # Keep in queue for next run
+                print(f"  -> FLAGGED (attempt {new_attempt_count}/{MAX_AGENT_ATTEMPTS})")
+                print(f"     Reasoning: {reasoning[:80]}...")
+                if not _dry_run:
+                    item.attempt_count = new_attempt_count
+                    item.agent_notes = new_notes
+                    update_review_queue_item(item)
+                flagged += 1
+
         elif result.get("action") == "skipped":
             print(f"  -> SKIPPED: {result.get('reason')}")
+            if not _dry_run:
+                remove_review_queue_item(item)
+
         else:
             print(f"  -> ERROR: {result.get('reason', 'Unknown error')}")
             errors += 1
@@ -674,10 +685,11 @@ def run_agent(limit: int = None, dry_run: bool = False, verbose: bool = False):
     print(f"\n{'='*60}")
     print(f"Summary")
     print(f"{'='*60}")
-    print(f"Processed: {len(queue)}")
-    print(f"Committed: {committed}")
-    print(f"Flagged:   {flagged}")
-    print(f"Errors:    {errors}")
+    print(f"Processed:  {len(queue)}")
+    print(f"Committed:  {committed}")
+    print(f"Flagged:    {flagged} (will retry next run)")
+    print(f"Escalated:  {escalated} (sent to human review)")
+    print(f"Errors:     {errors}")
     if dry_run:
         print(f"\n(DRY RUN - no changes were made)")
     print(f"{'='*60}\n")
@@ -688,9 +700,13 @@ def main():
     parser.add_argument("--limit", type=int, help="Process only the first N items")
     parser.add_argument("--dry-run", action="store_true", help="Show reasoning without making changes")
     parser.add_argument("--verbose", action="store_true", help="Show detailed agent output")
+    parser.add_argument("--status", action="store_true", help="Show queue status and exit")
     args = parser.parse_args()
 
-    run_agent(limit=args.limit, dry_run=args.dry_run, verbose=args.verbose)
+    if args.status:
+        show_queue_status()
+    else:
+        run_agent(limit=args.limit, dry_run=args.dry_run, verbose=args.verbose)
 
 
 if __name__ == "__main__":
