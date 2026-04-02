@@ -116,6 +116,14 @@ class PitcherStats(Stats):
     hard_hit_pct: Optional[float] = None
 
 
+# Review queue status constants
+QUEUE_STATUS_PENDING_AGENT = "pending_agent"
+QUEUE_STATUS_PENDING_HUMAN = "pending_human"
+QUEUE_STATUS_RESOLVED = "resolved"
+
+MAX_AGENT_ATTEMPTS = 3
+
+
 @dataclass
 class ReviewQueueItem:
     """Represents a player that needs manual review for name matching"""
@@ -125,7 +133,20 @@ class ReviewQueueItem:
     spotrac_link: str
     candidates: Dict[int, str]  # {fangraphs_id: "First Last (years played)"}
     added_at: datetime
+    # Retry tracking fields
+    attempt_count: int = 0
+    status: str = QUEUE_STATUS_PENDING_AGENT  # pending_agent | pending_human | resolved
+    agent_notes: str = ""  # Accumulated reasoning from agent attempts
 
     def get_key(self) -> Tuple[str, str, int]:
         """Returns composite key for deduplication"""
         return (self.first_name, self.last_name, self.contract_year)
+
+    def needs_agent_review(self) -> bool:
+        """Returns True if this item should be processed by the agent"""
+        return (self.status == QUEUE_STATUS_PENDING_AGENT and
+                self.attempt_count < MAX_AGENT_ATTEMPTS)
+
+    def needs_human_review(self) -> bool:
+        """Returns True if this item should be processed by a human"""
+        return self.status == QUEUE_STATUS_PENDING_HUMAN

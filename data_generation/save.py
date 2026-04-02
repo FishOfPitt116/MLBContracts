@@ -306,6 +306,27 @@ def read_stats_from_file() -> Tuple[List[BatterStats], List[PitcherStats]]:
     return read_batter_stats(), read_pitcher_stats()
 
 
+REVIEW_QUEUE_HEADERS = [
+    "first_name", "last_name", "contract_year", "spotrac_link",
+    "candidates", "added_at", "attempt_count", "status", "agent_notes"
+]
+
+
+def _write_review_queue_row(writer, item: ReviewQueueItem):
+    """Write a single review queue item as a CSV row"""
+    writer.writerow([
+        item.first_name,
+        item.last_name,
+        item.contract_year,
+        item.spotrac_link,
+        json.dumps(item.candidates),
+        item.added_at.strftime("%Y-%m-%d %H:%M:%S"),
+        item.attempt_count,
+        item.status,
+        item.agent_notes,
+    ])
+
+
 def write_review_queue_item(item: ReviewQueueItem):
     """Add a single item to the review queue"""
     file_exists = os.path.isfile(REVIEW_QUEUE_FILE)
@@ -318,19 +339,14 @@ def write_review_queue_item(item: ReviewQueueItem):
     with open(REVIEW_QUEUE_FILE, mode="a", newline="") as file:
         writer = csv.writer(file)
         if not file_exists:
-            writer.writerow(["first_name", "last_name", "contract_year", "spotrac_link", "candidates", "added_at"])
-        writer.writerow([
-            item.first_name,
-            item.last_name,
-            item.contract_year,
-            item.spotrac_link,
-            json.dumps(item.candidates),  # Store dict as JSON string
-            item.added_at.strftime("%Y-%m-%d %H:%M:%S")
-        ])
+            writer.writerow(REVIEW_QUEUE_HEADERS)
+        _write_review_queue_row(writer, item)
 
 
 def read_review_queue() -> List[ReviewQueueItem]:
     """Read all items from the review queue"""
+    from .records import QUEUE_STATUS_PENDING_AGENT
+
     items = []
     if not os.path.isfile(REVIEW_QUEUE_FILE):
         return items
@@ -342,13 +358,21 @@ def read_review_queue() -> List[ReviewQueueItem]:
             candidates_raw = json.loads(row["candidates"]) if row["candidates"] else {}
             candidates = {int(k): v for k, v in candidates_raw.items()}
 
+            # Handle backwards compatibility for old CSV files without new columns
+            attempt_count = int(row.get("attempt_count", 0)) if row.get("attempt_count") else 0
+            status = row.get("status", QUEUE_STATUS_PENDING_AGENT) or QUEUE_STATUS_PENDING_AGENT
+            agent_notes = row.get("agent_notes", "") or ""
+
             items.append(ReviewQueueItem(
                 first_name=row["first_name"],
                 last_name=row["last_name"],
                 contract_year=int(row["contract_year"]),
                 spotrac_link=row["spotrac_link"],
                 candidates=candidates,
-                added_at=datetime.strptime(row["added_at"], "%Y-%m-%d %H:%M:%S")
+                added_at=datetime.strptime(row["added_at"], "%Y-%m-%d %H:%M:%S"),
+                attempt_count=attempt_count,
+                status=status,
+                agent_notes=agent_notes,
             ))
     return items
 
@@ -357,17 +381,25 @@ def remove_review_queue_item(item: ReviewQueueItem):
     """Remove an item from the review queue after it's been resolved"""
     items = read_review_queue()
     remaining = [i for i in items if i.get_key() != item.get_key()]
+    _rewrite_review_queue(remaining)
 
-    # Rewrite the file without the removed item
+
+def update_review_queue_item(item: ReviewQueueItem):
+    """Update an existing item in the review queue"""
+    items = read_review_queue()
+    updated = []
+    for i in items:
+        if i.get_key() == item.get_key():
+            updated.append(item)
+        else:
+            updated.append(i)
+    _rewrite_review_queue(updated)
+
+
+def _rewrite_review_queue(items: List[ReviewQueueItem]):
+    """Rewrite the entire review queue file with the given items"""
     with open(REVIEW_QUEUE_FILE, mode="w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["first_name", "last_name", "contract_year", "spotrac_link", "candidates", "added_at"])
-        for i in remaining:
-            writer.writerow([
-                i.first_name,
-                i.last_name,
-                i.contract_year,
-                i.spotrac_link,
-                json.dumps(i.candidates),
-                i.added_at.strftime("%Y-%m-%d %H:%M:%S")
-            ])
+        writer.writerow(REVIEW_QUEUE_HEADERS)
+        for item in items:
+            _write_review_queue_row(writer, item)
