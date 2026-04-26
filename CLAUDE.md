@@ -28,8 +28,8 @@ make review-queue                               # Interactive processing
 python -m data_generation.review_queue --status # View queue without processing
 
 # Join contracts with player stats (for modeling)
-make join                                       # Uses 1-year window (prior season)
-python -m data_generation.join --window 3       # Use 3-year rolling window
+make join                                       # Joins all window sizes (1, 3, 5, 10-year)
+python -m data_generation.join --overwrite      # Force re-join of all contracts
 
 # Run analysis and generate plots
 make analyze
@@ -50,9 +50,10 @@ make analyze
 
 3. **Dataset Join** (`data_generation/join.py`): Joins contracts with prior-season stats
    - For contract in year Y, attaches stats from year Y-1
+   - Wide format: ALL window sizes (1, 3, 5, 10-year) as separate columns per row
+   - Column naming: `bat_war_1y`, `bat_war_3y`, `pit_era_1y`, etc.
    - Includes both batting (`bat_*`) and pitching (`pit_*`) stats for all players
-   - Supports multiple window sizes (1, 3, 5, 10-year)
-   - Output: `dataset/contracts_with_stats.csv`
+   - Output: `dataset/contracts_with_stats.csv` (186 columns total)
 
 4. **Analysis Pipeline** (`analysis/contract_analysis.py`): Main analysis entrypoint
    - Computes AAV (Average Annual Value) = value / duration
