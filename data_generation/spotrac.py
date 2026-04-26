@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from datetime import datetime
+import os
 import requests
 import time
 from typing import Dict, List, Optional, Tuple
@@ -10,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .log_stream import LogStream
 from .records import Player, Salary, ReviewQueueItem
-from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file, write_review_queue_item
+from .save import write_players_to_file, write_contracts_to_file, read_players_from_file, read_contracts_from_file, write_review_queue_item, CONTRACTS_FILE, PLAYERS_FILE
 from .player_lookup import (
     get_players_by_name,
     get_player_by_fangraphs_id,
@@ -307,12 +308,17 @@ def get_records(url: str, year: int, salary_type: str) -> Tuple[List[Player], Li
         salary = extract_salary_data(row, player, year, salary_type, headers)
         if not salary:
             continue
-        if salary.contract_id not in CONTRACT_OBJECT_CACHE:
-            CONTRACT_OBJECT_CACHE[salary.contract_id] = salary
 
+        # Ensure unique contract_id by adding sequence suffix if needed
+        base_id = salary.contract_id
+        seq = 1
+        while salary.contract_id in CONTRACT_OBJECT_CACHE:
+            seq += 1
+            salary.contract_id = f"{base_id}_{seq}"
+
+        CONTRACT_OBJECT_CACHE[salary.contract_id] = salary
         players.append(PLAYER_OBJECT_CACHE[player.player_id])
-        if salary:
-            salaries.append(salary)
+        salaries.append(salary)
 
     return players, salaries
 
@@ -334,6 +340,15 @@ def get_free_agent_records(year: int) -> Tuple[List[Player], List[Salary]]:
 def main(start_year, end_year=None, overwrite=False, non_interactive=False):
     global NON_INTERACTIVE
     NON_INTERACTIVE = non_interactive
+
+    # Clear caches and files when overwriting to ensure consistent ID generation
+    if overwrite:
+        CONTRACT_OBJECT_CACHE.clear()
+        PLAYER_OBJECT_CACHE.clear()
+        # Truncate data files
+        for filepath in [CONTRACTS_FILE, PLAYERS_FILE]:
+            if os.path.isfile(filepath):
+                os.remove(filepath)
 
     for year in range(start_year, end_year+1 if end_year else start_year+1):
         # Skip fetching if year already exists and is not the current year

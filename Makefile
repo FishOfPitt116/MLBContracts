@@ -9,7 +9,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join
+.PHONY: dataset dataset-auto dataset-rebuild analyze review-queue join
 
 build: dataset
 
@@ -28,6 +28,15 @@ dataset-auto:
 	@echo "Joining contracts with stats..."
 	$(PYTHON) -m data_generation.join
 	@echo "Full dataset assembly complete."
+
+dataset-rebuild:
+	@echo "Rebuilding entire dataset from scratch..."
+	$(PYTHON) -m $(CONTRACTS_DATASET_FILE) --start-year 2011 --end-year $(shell date +%Y) --overwrite --non-interactive
+	@echo "Assembling stats dataset..."
+	$(PYTHON) -m $(STATS_DATASET_FILE)
+	@echo "Joining contracts with stats..."
+	$(PYTHON) -m data_generation.join --overwrite
+	@echo "Full dataset rebuild complete."
 
 analyze:
 	@echo "Running contract analysis..."
