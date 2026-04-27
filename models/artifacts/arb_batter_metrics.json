@@ -1,0 +1,49 @@
+{
+  "model_type": "random_forest",
+  "player_type": "batter",
+  "mae": 0.9778184298690913,
+  "rmse": 1.7327292197919373,
+  "r2": 0.8423997359198714,
+  "pct_within_tolerance": 0.4857142857142857,
+  "tolerance": 0.5,
+  "n_samples": 245,
+  "cv_mae_mean": 0.8584242577296741,
+  "cv_mae_std": 0.047459836467285195,
+  "cv_mae_scores": [
+    0.8640032120064405,
+    0.9259416746503827,
+    0.7769690816025833,
+    0.8637380193129184,
+    0.8614693010760456
+  ],
+  "tier_metrics": {
+    "1": {
+      "n_samples": 133,
+      "avg_actual": 2.409204766917293,
+      "avg_predicted": 2.5749351954252244,
+      "tolerance": 0.23,
+      "mae": 0.49833058287333987,
+      "pct_within_tolerance": 0.39849624060150374,
+      "pass": false
+    },
+    "2": {
+      "n_samples": 67,
+      "avg_actual": 4.722529014925373,
+      "avg_predicted": 5.05463851743563,
+      "tolerance": 0.4,
+      "mae": 0.9909850603466122,
+      "pct_within_tolerance": 0.3582089552238806,
+      "pass": false
+    },
+    "3": {
+      "n_samples": 45,
+      "avg_actual": 8.622668466666665,
+      "avg_predicted": 7.896627184970847,
+      "tolerance": 0.64,
+      "mae": 2.375367750056671,
+      "pct_within_tolerance": 0.3333333333333333,
+      "pass": false
+    },
+    "all_pass": false
+  }
+}

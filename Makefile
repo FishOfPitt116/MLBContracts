@@ -7,7 +7,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join train-pre-arb
+.PHONY: dataset dataset-auto analyze review-queue join train-pre-arb train-arb train-arb-pitcher train-arb-batter
 
 build: dataset
 
@@ -45,3 +45,18 @@ train-pre-arb:
 	@echo "Training pre-arbitration salary model..."
 	$(PYTHON) -m models.pre_arb.train --model-type ridge --save
 	@echo "Model training complete!"
+
+train-arb:
+	@echo "Training arbitration salary models (pitcher and batter)..."
+	$(PYTHON) -m models.arb.train --player-type all --model-type random_forest --save
+	@echo "Model training complete!"
+
+train-arb-pitcher:
+	@echo "Training pitcher arbitration salary model..."
+	$(PYTHON) -m models.arb.train --player-type pitcher --model-type random_forest --save
+	@echo "Pitcher model training complete!"
+
+train-arb-batter:
+	@echo "Training batter arbitration salary model..."
+	$(PYTHON) -m models.arb.train --player-type batter --model-type random_forest --save
+	@echo "Batter model training complete!"

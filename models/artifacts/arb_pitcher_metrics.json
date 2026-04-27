@@ -1,0 +1,49 @@
+{
+  "model_type": "random_forest",
+  "player_type": "pitcher",
+  "mae": 0.8933513786854416,
+  "rmse": 1.4362003489686286,
+  "r2": 0.6797734487308552,
+  "pct_within_tolerance": 0.50920245398773,
+  "tolerance": 0.5,
+  "n_samples": 326,
+  "cv_mae_mean": 0.9254353041601464,
+  "cv_mae_std": 0.08984294837531413,
+  "cv_mae_scores": [
+    0.9509295915552658,
+    0.9929120348354071,
+    0.7504715504580081,
+    0.9421212880454081,
+    0.9907420559066423
+  ],
+  "tier_metrics": {
+    "1": {
+      "n_samples": 173,
+      "avg_actual": 2.1512942138728324,
+      "avg_predicted": 2.03957326342948,
+      "tolerance": 0.23,
+      "mae": 0.6006728036043189,
+      "pct_within_tolerance": 0.3988439306358382,
+      "pass": false
+    },
+    "2": {
+      "n_samples": 95,
+      "avg_actual": 3.6039801157894735,
+      "avg_predicted": 3.9025086144193812,
+      "tolerance": 0.4,
+      "mae": 1.0742647822154694,
+      "pct_within_tolerance": 0.28421052631578947,
+      "pass": false
+    },
+    "3": {
+      "n_samples": 58,
+      "avg_actual": 5.853275862068965,
+      "avg_predicted": 5.479293777755996,
+      "tolerance": 0.64,
+      "mae": 1.4700172434040897,
+      "pct_within_tolerance": 0.39655172413793105,
+      "pass": false
+    },
+    "all_pass": false
+  }
+}
