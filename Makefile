@@ -3,13 +3,11 @@ PYTHON_BIN = $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; els
 PYTHON = PYTHONPATH=$(shell pwd) $(PYTHON_BIN)
 
 # files
-# TODO: add more test directories here as they get created
-# TODO: change `data_generation/spotrac.py` to the actual main dataset generation file once stats are added
 CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join
+.PHONY: dataset dataset-auto analyze review-queue join train-pre-arb
 
 build: dataset
 
@@ -42,3 +40,8 @@ join:
 	@echo "Joining contracts with player stats..."
 	$(PYTHON) -m data_generation.join
 	@echo "Join complete!"
+
+train-pre-arb:
+	@echo "Training pre-arbitration salary model..."
+	$(PYTHON) -m models.pre_arb.train --model-type ridge --save
+	@echo "Model training complete!"
