@@ -1,9 +1,9 @@
 name: Daily Dataset Update
 
 on:
-  schedule:
-    # Run at 12:00 UTC (8:00 AM ET during EDT)
-    - cron: '0 12 * * *'
+  # schedule:
+  #   # Run at 12:00 UTC (8:00 AM ET during EDT)
+  #   - cron: '0 12 * * *'
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 permissions:
