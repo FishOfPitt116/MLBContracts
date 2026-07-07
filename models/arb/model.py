@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from joblib import dump, load
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import Ridge, Lasso
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 
@@ -30,7 +31,7 @@ class ArbModel:
         Initialize the arbitration model.
 
         Args:
-            model_type: "random_forest" or "gradient_boosting"
+            model_type:  "random_forest", "gradient_boosting", "ridge", or "lasso"
             player_type: "pitcher", "batter", or None (unified model)
         """
         self.model_type = model_type
@@ -41,7 +42,7 @@ class ArbModel:
         self.cv_scores = None
 
     def _create_model(self):
-        """Create the underlying sklearn model based on model_type."""
+        """Create the underlying sklearn estimator based on model_type."""
         if self.model_type == "random_forest":
             return RandomForestRegressor(
                 n_estimators=config.RANDOM_FOREST_N_ESTIMATORS,
@@ -58,6 +59,10 @@ class ArbModel:
                 learning_rate=config.GRADIENT_BOOSTING_LEARNING_RATE,
                 random_state=config.GRADIENT_BOOSTING_RANDOM_STATE,
             )
+        elif self.model_type == "ridge":
+            return Ridge(alpha=config.RIDGE_ALPHA)
+        elif self.model_type == "lasso":
+            return Lasso(alpha=config.LASSO_ALPHA, max_iter=10000)
         else:
             raise ValueError(f"Unknown model type: {self.model_type}")
 
@@ -69,7 +74,7 @@ class ArbModel:
             X_train: Training features DataFrame
             y_train: Training target Series
         """
-        preprocessor = get_preprocessor(self.player_type)
+        preprocessor = get_preprocessor(self.player_type, self.model_type)
         model = self._create_model()
 
         self.pipeline = Pipeline(
@@ -184,7 +189,7 @@ class ArbModel:
             cv = config.CV_FOLDS
 
         if self.pipeline is None:
-            preprocessor = get_preprocessor(self.player_type)
+            preprocessor = get_preprocessor(self.player_type, self.model_type)
             model = self._create_model()
             self.pipeline = Pipeline(
                 steps=[("preprocessor", preprocessor), ("model", model)]
@@ -216,9 +221,8 @@ class ArbModel:
 
         os.makedirs(artifacts_dir, exist_ok=True)
 
-        # Get appropriate filenames based on player type
-        model_filename = config.get_model_filename(self.player_type)
-        metrics_filename = config.get_metrics_filename(self.player_type)
+        model_filename = config.get_model_filename(self.player_type, self.model_type)
+        metrics_filename = config.get_metrics_filename(self.player_type, self.model_type)
 
         # Save pipeline (includes preprocessor and model)
         model_path = os.path.join(artifacts_dir, model_filename)
@@ -260,13 +264,14 @@ class ArbModel:
             json.dump(metrics_to_save, f, indent=2)
 
     @classmethod
-    def load(cls, artifacts_dir=None, player_type=None):
+    def load(cls, artifacts_dir=None, player_type=None, model_type="random_forest"):
         """
         Load model from disk.
 
         Args:
             artifacts_dir: Directory to load from (default from config)
-            player_type: "pitcher", "batter", or None (unified model)
+            player_type:   "pitcher", "batter", or None (unified model)
+            model_type:    Algorithm name used when saving (default: "random_forest")
 
         Returns:
             ArbModel: Loaded model instance
@@ -274,9 +279,8 @@ class ArbModel:
         if artifacts_dir is None:
             artifacts_dir = config.ARTIFACTS_DIR
 
-        # Get appropriate filenames based on player type
-        model_filename = config.get_model_filename(player_type)
-        metrics_filename = config.get_metrics_filename(player_type)
+        model_filename = config.get_model_filename(player_type, model_type)
+        metrics_filename = config.get_metrics_filename(player_type, model_type)
 
         model_path = os.path.join(artifacts_dir, model_filename)
         if not os.path.exists(model_path):
@@ -303,54 +307,41 @@ class ArbModel:
 
     def get_feature_importances(self):
         """
-        Get feature importances (for tree-based models).
+        Get feature importances (tree models) or absolute coefficients (linear models).
 
         Returns:
-            dict: Feature name to importance mapping, or None if not available
+            dict: Feature name → importance/|coefficient| mapping, or None if unavailable
         """
         if self.pipeline is None:
             return None
 
         model = self.pipeline.named_steps["model"]
-        if not hasattr(model, "feature_importances_"):
-            return None
-
         preprocessor = self.pipeline.named_steps["preprocessor"]
 
-        # Get feature names based on player type
-        feature_names = []
-
-        if self.player_type == "pitcher":
-            numeric_features = (
-                config.PITCHER_PERSONAL_FEATURES + config.PITCHER_FEATURES
-            )
-            feature_names.extend(numeric_features)
-            # No categorical features for pitcher model
-        elif self.player_type == "batter":
-            numeric_features = (
-                config.BATTER_PERSONAL_FEATURES + config.BATTER_FEATURES
-            )
-            feature_names.extend(numeric_features)
-            # Get one-hot encoded position names
-            cat_transformer = preprocessor.named_transformers_["cat"]
-            encoder = cat_transformer.named_steps["encoder"]
-            cat_features = encoder.get_feature_names_out([config.POSITION_FEATURE])
-            feature_names.extend(cat_features)
+        if hasattr(model, "feature_importances_"):
+            importances = model.feature_importances_
+        elif hasattr(model, "coef_"):
+            importances = np.abs(model.coef_)
         else:
-            # Unified model (legacy)
-            numeric_features = (
-                config.PERSONAL_FEATURES
-                + config.BATTER_FEATURES
-                + config.PITCHER_FEATURES
-            )
-            feature_names.extend(numeric_features)
-            # Get one-hot encoded position names
-            cat_transformer = preprocessor.named_transformers_["cat"]
-            encoder = cat_transformer.named_steps["encoder"]
-            cat_features = encoder.get_feature_names_out([config.POSITION_FEATURE])
-            feature_names.extend(cat_features)
+            return None
 
-        importances = model.feature_importances_
+        # Build processed feature name list matching preprocessor output order:
+        # numeric features (standardized) followed by OHE categoricals
+        all_feature_cols = get_feature_columns(self.player_type, self.model_type)
+        numeric_features = [f for f in all_feature_cols if f != config.POSITION_FEATURE]
+        feature_names = list(numeric_features)
+
+        if config.POSITION_FEATURE in all_feature_cols:
+            cat_transformer = preprocessor.named_transformers_.get("cat")
+            if cat_transformer is not None:
+                encoder = cat_transformer.named_steps["encoder"]
+                feature_names.extend(
+                    encoder.get_feature_names_out([config.POSITION_FEATURE])
+                )
+
+        if len(feature_names) != len(importances):
+            return None
+
         return dict(zip(feature_names, importances))
 
 
@@ -408,9 +399,9 @@ def train_and_evaluate(model_type="random_forest", player_type=None, verbose=Tru
     Full training and evaluation pipeline.
 
     Args:
-        model_type: "random_forest" or "gradient_boosting"
+        model_type:  "random_forest", "gradient_boosting", "ridge", or "lasso"
         player_type: "pitcher", "batter", or None (unified model)
-        verbose: Print progress and results
+        verbose:     Print progress and results
 
     Returns:
         tuple: (model, overall_metrics, tier_metrics)
@@ -420,12 +411,12 @@ def train_and_evaluate(model_type="random_forest", player_type=None, verbose=Tru
     if verbose:
         print(f"Loading and filtering data for {player_type_label} model...")
 
-    df = load_and_filter_data(player_type=player_type)
-    X, y = get_features_and_target(df, player_type=player_type)
+    df = load_and_filter_data(player_type=player_type, model_type=model_type)
+    X, y = get_features_and_target(df, player_type=player_type, model_type=model_type)
 
     if verbose:
         print(f"Dataset size: {len(df):,} contracts")
-        print(f"Features: {len(get_feature_columns(player_type))} columns")
+        print(f"Features: {len(get_feature_columns(player_type, model_type))} columns")
 
     # Train/test split (stratified by normalized service time buckets)
     # Create stratification bins based on service time (already normalized in prepare_features)

@@ -22,18 +22,21 @@ def train_single_model(model_type, player_type, save, artifacts_dir, verbose):
     return model, metrics, tier_metrics
 
 
-def compare_model_types(player_type, save, artifacts_dir, verbose):
-    """Compare random_forest vs gradient_boosting for a given player type."""
+ALL_MODEL_TYPES = list(config.MODEL_PROFILES.keys())
+
+
+def compare_model_types(player_type, model_types, save, artifacts_dir, verbose):
+    """Train and compare a set of model types for a given player type."""
     player_label = player_type or "unified"
 
     if verbose:
         print("=" * 70)
-        print(f"Comparing Model Types for {player_label.upper()} Model")
+        print(f"Comparing model types for {player_label.upper()}: {', '.join(model_types)}")
         print("=" * 70)
 
     results = {}
 
-    for model_type in ["random_forest", "gradient_boosting"]:
+    for model_type in model_types:
         if verbose:
             print(f"\n{'=' * 70}")
             print(f"Training {model_type.upper().replace('_', ' ')}")
@@ -48,90 +51,64 @@ def compare_model_types(player_type, save, artifacts_dir, verbose):
             "tier_metrics": tier_metrics,
         }
 
-    # Print comparison summary
     if verbose:
-        print_model_comparison(results)
+        print_model_comparison(results, model_types)
 
-    # Determine best model
-    rf = results["random_forest"]
-    gb = results["gradient_boosting"]
-
-    rf_passes = sum(
-        1 for t in [1, 2, 3] if rf["tier_metrics"].get(t, {}).get("pass")
-    )
-    gb_passes = sum(
-        1 for t in [1, 2, 3] if gb["tier_metrics"].get(t, {}).get("pass")
+    # Pick best by tier passes, then MAE
+    best = min(
+        model_types,
+        key=lambda mt: (
+            -sum(1 for t in [1, 2, 3] if results[mt]["tier_metrics"].get(t, {}).get("pass")),
+            results[mt]["metrics"]["mae"],
+        ),
     )
 
-    if rf_passes > gb_passes:
-        best = "random_forest"
-        reason = "more tier thresholds passed"
-    elif gb_passes > rf_passes:
-        best = "gradient_boosting"
-        reason = "more tier thresholds passed"
-    elif rf["metrics"]["mae"] <= gb["metrics"]["mae"]:
-        best = "random_forest"
-        reason = "lower MAE"
-    else:
-        best = "gradient_boosting"
-        reason = "lower MAE"
-
     if verbose:
-        print(f"\nRecommended model: {best.replace('_', ' ')} ({reason})")
+        print(f"\nRecommended model: {best.replace('_', ' ')} (lowest MAE among most tier passes)")
 
     if save:
-        best_model = results[best]["model"]
-        best_model.save(artifacts_dir)
+        results[best]["model"].save(artifacts_dir)
         if verbose:
-            print(f"\nSaved {best.replace('_', ' ')} model to {artifacts_dir}/")
+            print(f"Saved {best} model to {artifacts_dir}/")
 
     return results, best
 
 
-def print_model_comparison(results):
-    """Print comparison summary for two model types."""
-    print("\n" + "=" * 70)
+def print_model_comparison(results, model_types):
+    """Print a comparison table across any number of model types."""
+    col_w = 20
+    header = f"{'Metric':<30}" + "".join(f"{mt.replace('_',' ').title():<{col_w}}" for mt in model_types)
+    print("\n" + "=" * (30 + col_w * len(model_types)))
     print("Model Comparison Summary")
-    print("=" * 70)
+    print("=" * (30 + col_w * len(model_types)))
+    print(f"\n{header}")
+    print("-" * (30 + col_w * len(model_types)))
 
-    rf = results["random_forest"]
-    gb = results["gradient_boosting"]
+    def row(label, values):
+        return f"{label:<30}" + "".join(f"{v:<{col_w}}" for v in values)
 
-    print(f"\n{'Metric':<30} {'Random Forest':<20} {'Gradient Boosting':<20}")
-    print("-" * 70)
+    print(row("MAE", [f"${results[mt]['metrics']['mae']:.4f}M" for mt in model_types]))
+    print(row("RMSE", [f"${results[mt]['metrics']['rmse']:.4f}M" for mt in model_types]))
+    print(row("R²", [f"{results[mt]['metrics']['r2']:.4f}" for mt in model_types]))
+    print(row("% within tolerance",
+              [f"{results[mt]['metrics']['pct_within_tolerance']*100:.2f}%" for mt in model_types]))
+    print(row("CV MAE (mean ± std)",
+              [f"{results[mt]['metrics']['cv_mae_mean']:.3f}±{results[mt]['metrics']['cv_mae_std']:.3f}"
+               for mt in model_types]))
 
-    rf_m = rf["metrics"]
-    gb_m = gb["metrics"]
-
-    print(f"{'MAE':<30} ${rf_m['mae']:.4f}M{'':<12} ${gb_m['mae']:.4f}M")
-    print(f"{'RMSE':<30} ${rf_m['rmse']:.4f}M{'':<12} ${gb_m['rmse']:.4f}M")
-    print(f"{'R²':<30} {rf_m['r2']:.4f}{'':<15} {gb_m['r2']:.4f}")
-    print(
-        f"{'% within tolerance':<30} {rf_m['pct_within_tolerance']*100:.2f}%{'':<14} "
-        f"{gb_m['pct_within_tolerance']*100:.2f}%"
-    )
-    print(
-        f"{'CV MAE (mean ± std)':<30} "
-        f"{rf_m['cv_mae_mean']:.3f}±{rf_m['cv_mae_std']:.3f}{'':<8} "
-        f"{gb_m['cv_mae_mean']:.3f}±{gb_m['cv_mae_std']:.3f}"
-    )
-
-    # Per-tier comparison
     print("\nPer-Tier Accuracy (% within tier tolerance):")
-    print(f"{'Tier':<10} {'Random Forest':<20} {'Gradient Boosting':<20}")
-    print("-" * 50)
+    tier_header = f"{'Tier':<10}" + "".join(f"{mt.replace('_',' ').title():<{col_w}}" for mt in model_types)
+    print(tier_header)
+    print("-" * (10 + col_w * len(model_types)))
 
     for tier in [1, 2, 3]:
-        rf_tier = rf["tier_metrics"].get(tier, {})
-        gb_tier = gb["tier_metrics"].get(tier, {})
-
-        rf_pct = rf_tier.get("pct_within_tolerance", 0) * 100
-        gb_pct = gb_tier.get("pct_within_tolerance", 0) * 100
-
-        rf_pass = "PASS" if rf_tier.get("pass") else "FAIL"
-        gb_pass = "PASS" if gb_tier.get("pass") else "FAIL"
-
-        print(f"Year {tier:<5} {rf_pct:.1f}% ({rf_pass}){'':<8} {gb_pct:.1f}% ({gb_pass})")
+        vals = []
+        for mt in model_types:
+            t = results[mt]["tier_metrics"].get(tier, {})
+            pct = t.get("pct_within_tolerance", 0) * 100
+            status = "PASS" if t.get("pass") else "FAIL"
+            vals.append(f"{pct:.1f}% ({status})")
+        print(f"Year {tier:<5}" + "".join(f"{v:<{col_w}}" for v in vals))
 
 
 def train_all_player_types(model_type, save, artifacts_dir, verbose):
@@ -223,7 +200,7 @@ def main():
     )
     parser.add_argument(
         "--model-type",
-        choices=["random_forest", "gradient_boosting"],
+        choices=ALL_MODEL_TYPES,
         default="random_forest",
         help="Type of model to train (default: random_forest)",
     )
@@ -258,9 +235,9 @@ def main():
     verbose = not args.quiet
 
     if args.compare:
-        # Compare model types for specified player type(s)
+        model_types = ALL_MODEL_TYPES
+
         if args.player_type == "all":
-            # Compare for both pitcher and batter
             all_results = {}
             for player_type in ["pitcher", "batter"]:
                 if verbose:
@@ -269,12 +246,13 @@ def main():
                     print("#" * 70)
 
                 results, best = compare_model_types(
-                    player_type, args.save, args.artifacts_dir, verbose
+                    player_type, model_types, args.save, args.artifacts_dir, verbose
                 )
                 all_results[player_type] = {"results": results, "best": best}
         else:
             compare_model_types(
                 args.player_type if args.player_type != "all" else None,
+                model_types,
                 args.save,
                 args.artifacts_dir,
                 verbose,

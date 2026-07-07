@@ -26,10 +26,25 @@ TIER_THRESHOLDS = {
 # Overall tolerance for aggregate metrics (used in format_metrics_report)
 TOLERANCE = 0.50  # $500K for overall pct_within_tolerance
 
+# Model profiles: controls algorithm-specific behaviour.
+# use_market_anchors — linear models benefit from prior-year tier salary stats;
+#                      tree models ignore them (WAR dominates all splits).
+MODEL_PROFILES = {
+    "random_forest":      {"use_market_anchors": False},
+    "gradient_boosting":  {"use_market_anchors": False},
+    "ridge":              {"use_market_anchors": True},
+    "lasso":              {"use_market_anchors": True},
+}
+
 # Feature configuration
 # Common personal features (used by both pitcher and batter models)
 PERSONAL_FEATURES = ["age", "service_time", "contract_year"]
 POSITION_FEATURE = "position"  # Will be one-hot encoded (batter model only)
+
+# Market anchor features: prior-year salary stats for same player_type + arb tier.
+# Added only for linear models (see MODEL_PROFILES). Computed via time-aware join
+# so year Y stats become the anchor for year Y+1 — no data leakage.
+MARKET_ANCHOR_FEATURES = ["market_prior_mean", "market_prior_p90"]
 
 # Pitcher model features (no position encoding needed - all are pitchers)
 PITCHER_PERSONAL_FEATURES = ["age", "service_time", "contract_year"]
@@ -80,6 +95,9 @@ GRADIENT_BOOSTING_MAX_DEPTH = 5
 GRADIENT_BOOSTING_LEARNING_RATE = 0.1
 GRADIENT_BOOSTING_RANDOM_STATE = 42
 
+RIDGE_ALPHA = 1.0
+LASSO_ALPHA = 0.1
+
 # Training configuration
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
@@ -101,24 +119,26 @@ BATTER_MODEL_FILENAME = "arb_batter_model.pkl"
 BATTER_METRICS_FILENAME = "arb_batter_metrics.json"
 
 
-def get_model_filename(player_type):
-    """Get model filename for a specific player type."""
+def get_model_filename(player_type, model_type="random_forest"):
+    """Get model artifact filename for a given player type and model algorithm."""
+    type_prefix = "" if model_type == "random_forest" else f"{model_type}_"
     if player_type == "pitcher":
-        return PITCHER_MODEL_FILENAME
+        return f"arb_pitcher_{type_prefix}model.pkl"
     elif player_type == "batter":
-        return BATTER_MODEL_FILENAME
+        return f"arb_batter_{type_prefix}model.pkl"
     else:
-        return MODEL_FILENAME
+        return f"arb_{type_prefix}model.pkl"
 
 
-def get_metrics_filename(player_type):
-    """Get metrics filename for a specific player type."""
+def get_metrics_filename(player_type, model_type="random_forest"):
+    """Get metrics artifact filename for a given player type and model algorithm."""
+    type_prefix = "" if model_type == "random_forest" else f"{model_type}_"
     if player_type == "pitcher":
-        return PITCHER_METRICS_FILENAME
+        return f"arb_pitcher_{type_prefix}metrics.json"
     elif player_type == "batter":
-        return BATTER_METRICS_FILENAME
+        return f"arb_batter_{type_prefix}metrics.json"
     else:
-        return METRICS_FILENAME
+        return f"arb_{type_prefix}metrics.json"
 
 
 def is_pitcher_position(position):
