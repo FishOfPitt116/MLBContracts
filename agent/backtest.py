@@ -2,7 +2,7 @@
 
 Samples N contracts per phase (deterministically, via --seed), predicts each
 with the Phase 0 agent, and scores predicted vs actual AAV using the shared
-metrics in models/evaluation.py.
+metrics in agent/metrics.py.
 
 CAVEAT — training-data contamination: in Phase 0 the LLM has likely memorized
 many historical contract outcomes, so backtests on past contracts measure
@@ -21,9 +21,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from models.evaluation import calculate_all_metrics, format_metrics_report
-
 from agent.config import BACKTESTS_DIR, CONTRACTS_CSV, DEFAULT_MODEL_ID, PLAYERS_CSV
+from agent.metrics import calculate_all_metrics, format_metrics_report
 from agent.predict import run_prediction
 
 PHASES = ["pre-arb", "arb", "free-agent"]

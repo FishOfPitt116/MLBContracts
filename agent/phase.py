@@ -21,9 +21,8 @@ from typing import Optional
 
 import pandas as pd
 
-from models.preprocessing import normalize_service_time
-
 from agent.config import CONTRACTS_CSV
+from agent.service_time import normalize_service_time
 
 # Service time sentinel Spotrac uses when it stops tracking (free agents)
 UNKNOWN = -1

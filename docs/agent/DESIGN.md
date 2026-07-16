@@ -44,7 +44,7 @@ Tools are introduced in phases. **Phase 0 (implemented)** is deliberately tool-l
 
 **Sources**: `dataset/contracts_spotrac.csv` (phase resolution, backtest sampling, actuals), `dataset/players.csv` (name/position lookup)
 
-Notes: rows deduped by `contract_id`; `service_time`/`age` use `-1` sentinels; multi-year deals have no rows for covered years. Service time normalization (`years + days/172`) reuses `models/preprocessing.py:normalize_service_time`.
+Notes: rows deduped by `contract_id`; `service_time`/`age` use `-1` sentinels; multi-year deals have no rows for covered years. Service time normalization (`years + days/172`) lives in `agent/service_time.py:normalize_service_time`.
 
 ## Citation Schema
 
@@ -92,7 +92,7 @@ predictions/
 
 - **Offline unit tests** (`make test-agent`): phase resolver against Max Scherzer's real career (pre-arb 2011 → arb 2012-14 → FA 2015+, sentinels, mid-contract years) plus synthetic crossover cases; schema round-trip and citation constraints; trace/history writing
 - **Live checks**: one prediction per phase; verify citations per material figure, trace + history artifacts
-- **Backtest harness** (`make backtest-agent`): seeded N-per-phase sample of historical contracts, scored on AAV with `models/evaluation.py` metrics at phase-scaled tolerances (±$0.25M pre-arb / ±$1M arb / ±$5M FA)
+- **Backtest harness** (`make backtest-agent`): seeded N-per-phase sample of historical contracts, scored on AAV with `agent/metrics.py` metrics at phase-scaled tolerances (±$0.25M pre-arb / ±$1M arb / ±$5M FA)
 
 **Training-data contamination caveat**: in Phase 0 the LLM has likely memorized many historical contract outcomes, so backtests on past contracts measure recall as much as prediction. They are harness scaffolding and a citation-quality check. The honest test is predictions for upcoming contracts accumulating in `predictions/history.csv` and scored once actuals land.
 
@@ -108,7 +108,6 @@ predictions/
 - League-minimum/CBA schedule and arb-raise-pattern heuristic tools (encoding decision logic that today lives in analysis docs)
 - Richer system prompt carrying business rules (counting stats drive arb salaries; aging curves for FA duration)
 - Scenario support: user-directed variations (contract length, options, team context) as first-class prompt inputs
-- Revisit archiving `models/` to `archive/v3` once the agent baseline is established
 
 ### Appendix A — FanGraphs dataset-refresh fallback (not implemented)
 
@@ -125,6 +124,6 @@ Verified working unauthenticated (2026-07) with field names matching pybaseball'
 ## Files to Reference (Existing Patterns)
 
 - `git show review-queue-agent:data_generation/review_queue_agent.py` — Strands agent conventions this package mirrors
-- `models/preprocessing.py` — service time normalization (reused)
-- `models/evaluation.py` — shared metrics (reused by backtest)
-- `docs/pre_arb/` — the sklearn-era design docs this system supersedes
+- `agent/service_time.py` — service time normalization
+- `agent/metrics.py` — shared metrics (used by backtest)
+- `archive/v3/docs_pre_arb/` — the sklearn-era design docs this system supersedes (moved from `docs/pre_arb/`; sklearn models archived to `archive/v3/models/`)

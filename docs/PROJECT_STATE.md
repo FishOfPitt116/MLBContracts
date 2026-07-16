@@ -20,7 +20,7 @@ Three-stage pipeline that produces the training/prediction dataset:
 
 Stats are collected via **pybaseball** for 1-, 3-, 5-, and 10-year rolling windows. Contracts are scraped from Spotrac and mapped to FanGraphs player IDs.
 
-### Pre-Arbitration Model (`models/pre_arb/`) — **merged to main**
+### Pre-Arbitration Model (`archive/v3/models/pre_arb/`) — **archived, superseded by the agent**
 
 Predicts single-year salaries for players with < 3 years service time. These salaries cluster tightly around the CBA-mandated league minimum.
 
@@ -34,7 +34,7 @@ Predicts single-year salaries for players with < 3 years service time. These sal
 | Within ±$250K | 99.3% | ≥ 95% | PASS |
 | CV MAE | $36K ± $0.6K | — | — |
 
-The $39K MAE is effectively the practical floor — remaining errors are unpredictable outliers (goodwill raises, mislabeled extensions, prorated call-up salaries).
+The $39K MAE is effectively the practical floor — remaining errors are unpredictable outliers (goodwill raises, mislabeled extensions, prorated call-up salaries). Archived to `archive/v3/` (July 2026) alongside `models/preprocessing.py` and `models/evaluation.py`, whose functions now live in `agent/service_time.py` and `agent/metrics.py` so the agent has no dependency on archived code. `docs/pre_arb/` moved to `archive/v3/docs_pre_arb/`.
 
 ### Arbitration Model (`models/arb/`) — **on `arb-model` branch, not yet merged**
 
@@ -123,7 +123,7 @@ Free agency contracts are structurally different: multi-year deals, open market 
 
 ### No Web Application
 
-The entire front-end and API layer doesn't exist yet. The models are sklearn pipelines serialized to `.pkl` files with a programmatic Python interface (`models/arb/inspect.py`, `models/pre_arb/inspect.py`). Building the web app requires:
+The entire front-end and API layer doesn't exist yet. The archived sklearn pre-arb model is a pipeline serialized to a `.pkl` file with a programmatic Python interface (`archive/v3/models/pre_arb/inspect.py`); the arb model has the same shape on the unmerged `arb-model` branch. Building the web app requires:
 
 - A serving layer (REST API wrapping the model `.pkl` files)
 - A front-end for browsing player projections
@@ -142,8 +142,8 @@ In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
 3. **Agent Phase 2+** — Comparable-contracts tool, league-minimum/CBA and arb-raise heuristic tools, business logic in the system prompt, scenario support (alternate lengths, options, teams).
 
-4. **Archive the sklearn models** — Move `models/` + `docs/pre_arb/` to `archive/v3` once the agent baseline is established (deferred deliberately; `models/preprocessing.py` and `models/evaluation.py` are still imported by `agent/`). The unmerged `arb-model` branch stays a branch.
+4. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
 
-5. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
+5. **Daily update workflow** — Revisit once Phase 1 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
 
-6. **Daily update workflow** — Revisit once Phase 1 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
+Done: sklearn models (`models/`) and their design docs (`docs/pre_arb/`) archived to `archive/v3/` (July 2026); the unmerged `arb-model` branch stays a branch.
