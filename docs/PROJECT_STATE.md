@@ -136,14 +136,18 @@ The entire front-end and API layer doesn't exist yet. The archived sklearn pre-a
 
 In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
-1. **Agent Phase 1** — Add the live MLB Stats API tool + expose the phase resolver as an agent tool. Expected to close the post-knowledge-cutoff misses (the $10M-vs-$32M Skubal case) and upgrade citations from model memory to tool evidence.
+1. **Agent Phase 1** — Natural-language front door (replace `--player-id`/`--year` flags with a free-text request the agent resolves, reporting ambiguity instead of guessing) + contract-status routing (stop "predicting" a number for players already under a known signed contract; add an explicit hypothetical-free-agency mode). Reordered ahead of new tools in July 2026 — see `docs/agent/DESIGN.md` Status/Roadmap for why.
 
-2. **Finish the Phase 0 baseline** — Complete a full seeded backtest (the first run was cut short at 13 predictions) and record the baseline to compare Phase 1 against.
+2. **Finish the Phase 0 baseline** — Complete a full seeded backtest (the first run was cut short at 13 predictions) and record the baseline to compare later phases against.
 
-3. **Agent Phase 2+** — Comparable-contracts tool, league-minimum/CBA and arb-raise heuristic tools, business logic in the system prompt, scenario support (alternate lengths, options, teams).
+3. **Agent Phase 2** — Live data sourcing: MLB Stats API tool for stats (closes the post-knowledge-cutoff misses like the $10M-vs-$32M Skubal case); contract-data and player-identity live sourcing scoped separately (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced).
 
-4. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
+4. **Agent Phase 3** — Multi-year forecasting: target-year ranges and user-supplied stat/context assumptions.
 
-5. **Daily update workflow** — Revisit once Phase 1 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
+5. **Agent Phase 4** — Comparable-contracts and CBA/arb-raise heuristic tools, business logic in the system prompt, team-conditioned scenario support and user guardrails.
+
+6. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
+
+7. **Daily update workflow** — Revisit once Phase 2 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
 
 Done: sklearn models (`models/`) and their design docs (`docs/pre_arb/`) archived to `archive/v3/` (July 2026); the unmerged `arb-model` branch stays a branch.
