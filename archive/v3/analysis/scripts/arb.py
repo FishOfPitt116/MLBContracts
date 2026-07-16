@@ -2,7 +2,7 @@ from matplotlib import pyplot as plt
 import os
 import seaborn as sns
 
-from analysis.contract_analysis import CONTRACT_DATA, GRAPH_DIR, normalize_service_time
+from archive.v3.analysis.contract_analysis import CONTRACT_DATA, GRAPH_DIR, normalize_service_time
 
 
 def arbitration_service_time_vs_contract_value(best_fit=False):

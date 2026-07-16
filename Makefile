@@ -7,7 +7,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join train-pre-arb
+.PHONY: dataset dataset-auto analyze review-queue join predict backtest-agent test-agent
 
 build: dataset
 
@@ -41,7 +41,13 @@ join:
 	$(PYTHON) -m data_generation.join
 	@echo "Join complete!"
 
-train-pre-arb:
-	@echo "Training pre-arbitration salary model..."
-	$(PYTHON) -m models.pre_arb.train --model-type ridge --save
-	@echo "Model training complete!"
+# Agent-based contract prediction (see docs/agent/DESIGN.md)
+# Usage: make predict PLAYER=Scherzer_5166 YEAR=2026
+predict:
+	$(PYTHON) -m agent.predict --player-id $(PLAYER) --year $(YEAR)
+
+backtest-agent:
+	$(PYTHON) -m agent.backtest --n-per-phase 5 --seed 42
+
+test-agent:
+	$(PYTHON) -m pytest agent/tests -q

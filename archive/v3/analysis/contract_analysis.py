@@ -3,7 +3,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import os
 
-from analysis.scripts import arb, free_agents, pre_arb
+from archive.v3.analysis.scripts import pre_arb
+from archive.v3.analysis.scripts import arb, free_agents
 
 GRAPH_DIR = os.path.join("analysis", "graphs")
 CONTRACT_DATASET = "dataset/contracts_spotrac.csv"
