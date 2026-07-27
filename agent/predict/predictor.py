@@ -10,8 +10,8 @@ import sys
 import time
 
 from agent.config import DEFAULT_MODEL_ID, model_params
-from agent.prompts import SYSTEM_PROMPT
-from agent.schema import ContractPrediction
+from agent.predict.prompts import SYSTEM_PROMPT
+from agent.predict.schema import ContractPrediction
 
 # One retry on structured-output failure before giving up
 MAX_ATTEMPTS = 2

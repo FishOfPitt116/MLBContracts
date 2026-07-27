@@ -89,7 +89,7 @@ def main():
         print(f"predicting {contract['contract_id']} "
               f"({player_row['first_name']} {player_row['last_name']}, {contract['type']})...")
         try:
-            prediction = run_prediction(player_row, year, args.model, quiet=True)
+            prediction, _ = run_prediction(player_row, year, args.model, quiet=True)
         except Exception as error:
             print(f"  FAILED: {error}")
             results.append({

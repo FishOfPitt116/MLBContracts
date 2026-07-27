@@ -4,7 +4,7 @@ import csv
 import json
 
 from agent.phase import PhaseResolution
-from agent.tests.test_schema import make_prediction
+from agent.predict.tests.test_schema import make_prediction
 from agent.trace import HISTORY_HEADERS, append_history, new_run_id, write_trace
 
 

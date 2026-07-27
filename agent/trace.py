@@ -14,7 +14,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from agent.config import HISTORY_CSV, TRACES_DIR
+from agent.config import CONVERSATIONS_DIR, HISTORY_CSV, TRACES_DIR
 
 HISTORY_HEADERS = [
     "run_date",
@@ -115,3 +115,35 @@ def append_history(
                 str(trace_path),
             ]
         )
+
+
+def write_conversation_trace(
+    run_id,
+    model_id,
+    initial_request,
+    turns,
+    prediction_trace_path=None,
+    conversations_dir=None,
+):
+    """Persist the orchestrator's turn-by-turn transcript for one conversation.
+
+    Kept separate from write_trace()'s per-prediction trace: the prediction
+    itself stays exactly as comparable across runs as it is today (fixed
+    prompt shape); this file records the free-form, variable-length
+    conversation that led to invoking it, linking back via
+    prediction_trace_path.
+    """
+    conversations_dir = conversations_dir or CONVERSATIONS_DIR
+    conversations_dir.mkdir(parents=True, exist_ok=True)
+    trace = {
+        "run_id": run_id,
+        "run_date": datetime.now(timezone.utc).isoformat(),
+        "model_id": model_id,
+        "initial_request": initial_request,
+        "turns": turns,
+        "prediction_trace_path": str(prediction_trace_path) if prediction_trace_path else None,
+    }
+    path = conversations_dir / f"{run_id}.json"
+    with open(path, mode="w") as file:
+        json.dump(trace, file, indent=2, default=str)
+    return path

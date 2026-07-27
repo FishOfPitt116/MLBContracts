@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent.schema import Citation, ContractPrediction
+from agent.predict.schema import Citation, ContractPrediction
 
 
 def make_prediction(**overrides):

@@ -34,11 +34,12 @@ python -m data_generation.join --overwrite      # Force re-join of all contracts
 # Run analysis and generate plots
 make analyze
 
-# Agent-based contract prediction (Phase 0; see docs/agent/DESIGN.md)
+# Agent-based contract prediction (see docs/agent/DESIGN.md)
 # Requires OPENAI_API_KEY in .env
-make predict PLAYER=Scherzer_5166 YEAR=2026   # Predict one player-year
-make backtest-agent                            # Seeded backtest (5/phase)
-make test-agent                                # Offline tests, no API key needed
+make predict PLAYER=Scherzer_5166 YEAR=2026     # Predict one player-year (direct flags)
+make ask REQUEST="what will Scherzer make in 2026?"  # Natural-language front door (Phase 1)
+make backtest-agent                              # Seeded backtest (5/phase)
+make test-agent                                  # Offline tests, no API key needed
 ```
 
 ## Architecture
@@ -66,14 +67,15 @@ make test-agent                                # Offline tests, no API key neede
    - Generates plots to `analysis/graphs/`
    - Calls sub-analyses: `pre_arb.main()`, `arb.main()`, `free_agents.main()`
 
-### Prediction Agent (`agent/`, Phase 0 — see docs/agent/DESIGN.md)
+### Prediction Agent (`agent/`, Phase 1 — see docs/agent/DESIGN.md)
 
 - Strands SDK + OpenAI (`gpt-5-mini` default) agent predicting contracts across all three phases
-- **Phase 0 is LLM-only** (no tools); phased roadmap adds an MLB Stats API tool, then comps/heuristic tools
-- Structured output (`agent/schema.py`) requires a **citation per material figure**
-- Phase (pre-arb/arb/FA) resolved **deterministically** from contract history (`agent/phase.py`), never by the LLM
-- Every run persists a trace JSON (`predictions/traces/`) and a `predictions/history.csv` row
+- **Three-tier architecture**: a persistent `agent/orchestrator/` agent is the only thing that talks to the user (natural language only); it calls `agent/intake/` (resolves a free-text request into player/year/mode, asking clarifying questions when needed) and `agent/predict/` (the Phase 0 predictor, LLM-only/no tools, unchanged) as sub-agent tools
+- Structured output (`agent/predict/schema.py`) requires a **citation per material figure**
+- Phase (pre-arb/arb/FA) resolved **deterministically** from contract history (`agent/phase.py`), never by the LLM; `project_phase_timeline()` exposes a player's full projected phase timeline as an intake tool
+- Every prediction persists a trace JSON (`predictions/traces/`) and a `predictions/history.csv` row; every `make ask` conversation persists a linked transcript (`predictions/conversations/`)
 - Backtest metrics are training-data-contaminated in Phase 0 (LLM memorized past contracts) — treat as scaffolding
+- Contract-status routing (skip the LLM call for years already covered by a known signed contract) is not yet built — still open
 
 ### Key Data Structures (in `data_generation/records.py`)
 

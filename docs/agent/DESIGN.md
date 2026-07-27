@@ -10,7 +10,9 @@ Tools are introduced in phases. **Phase 0 (implemented)** is deliberately tool-l
 
 Phase 0 is implemented and verified end-to-end (see Design Decisions below). The sklearn-era models and their design docs have been archived to `archive/v3/` — `agent/` no longer depends on them (`agent/service_time.py` and `agent/metrics.py` replace the two functions it used to import from `models/`).
 
-The Roadmap below was revised this month: the original plan added tools first (live stats, then comps/heuristics). After using the CLI hands-on, grounding correctness and request ergonomics turned out to matter more than new tools — specifically, the agent will currently "predict" a number for a player who is already under a known signed contract, and every invocation requires already knowing the internal `player_id`. Phase 1 now addresses those two gaps before any new tool is added; the live-stats tool moves to Phase 2.
+The Roadmap below was revised this month: the original plan added tools first (live stats, then comps/heuristics). After using the CLI hands-on, grounding correctness and request ergonomics turned out to matter more than new tools — specifically, the agent would "predict" a number for a player who is already under a known signed contract, and every invocation required already knowing the internal `player_id`. Phase 1 addresses those two gaps before any new tool is added; the live-stats tool moves to Phase 2.
+
+**Phase 1's natural-language front door is now implemented** (see Design Decision #7): a persistent orchestrator agent, talking to the user only in natural language, calls two sub-agents as tools — intake (resolves player/year/mode, asking clarifying questions through the orchestrator) and predict (the unchanged Phase 0 predictor). Intake can look up a player's full projected phase timeline (`agent/phase.py:project_phase_timeline`) rather than a single year, and a `hypothetical_free_agent` mode supports "what would they get in free agency right now" requests. The `known`/`projected` contract-status split described in Design Decision #4 is **still open** — this pass adds the timeline *lookup* tool, not new prediction-skipping behavior — and remains the next Phase 1 item.
 
 ## Design Decisions
 
@@ -35,7 +37,8 @@ The Roadmap below was revised this month: the original plan added tools first (l
 - Sentinels handled: `service_time = -1` (free agents), `age = -1`; mid-contract gap years resolve via the covering deal
 - Known limitation: super-two players (top ~22% of 2+ service time) are arb-eligible a year early and will be classified pre-arb; flagged in the resolution notes
 - **Rationale**: phase is a matter of record/rule, not judgment.
-- **Update (Roadmap Phase 1)**: the resolver currently collapses two different situations into `method="projected"` — a genuine future forecast, and a year that falls inside an already-signed, currently-active multi-year deal (it notes "under contract through YYYY" but the agent still "predicts" a number that is, in fact, already known). Phase 1 splits this into a `known` outcome that returns the actual figure with no LLM call. Phase resolution stays harness-side rather than becoming an agent-facing tool — routing known/projected/hypothetical is still a matter of record/rule, same as phase itself.
+- **Update (Roadmap Phase 1)**: the resolver currently collapses two different situations into `method="projected"` — a genuine future forecast, and a year that falls inside an already-signed, currently-active multi-year deal (it notes "under contract through YYYY" but the agent still "predicts" a number that is, in fact, already known). Splitting this into a `known` outcome that returns the actual figure with no LLM call is **still open** — not yet built.
+- **Added (July 2026)**: `project_phase_timeline()` answers "what phase applies in every future year" (e.g. `{"pre-arb": [2025, 2027], "arb": [2028, 2030], "free-agent": [2031, null]}`, `null` end = open-ended) rather than one year at a time, reusing the same +1.0/season projection. Exposed to the intake sub-agent as a tool (`agent/intake/tools.py:get_contract_phase_timeline`) — this is the one piece of phase logic that *is* now agent-facing, since "which years does this timeline cover" is closer to a lookup the agent reasons over than a routing decision the harness must make deterministically. `resolve_phase()` itself, which decides what to feed the predictor for one specific year, stays harness-side and untouched. Known caveats (not solved): super-two eligibility; assumes uninterrupted active-roster time (no adjustment for minor-league options or injury stints pausing service-time accrual).
 
 ### 5. Fresh agent per prediction ✅
 - `agent/predictor.py` constructs a new Strands `Agent` per run (the review-queue agent reuses one across items)
@@ -46,6 +49,15 @@ The Roadmap below was revised this month: the original plan added tools first (l
 - Every run appends to `predictions/history.csv` (predicted AAV/duration/total, range, actual AAV when known, model, prompt version, trace path) — repeated runs for the same player over time show projection fluctuation
 - LLM outputs are not bit-identical across runs; reproducibility means every number is auditable back to its run context
 - Traces are git-tracked (revisit if noisy)
+
+### 7. Three-tier agent architecture for the NL front door ✅ (July 2026)
+- A persistent **orchestrator** agent (`agent/orchestrator/`) is the only thing that talks to the user, every turn, in natural language (`OrchestratorTurn{message, done}` — never raw JSON shown to the user). It calls two sub-agents as tools:
+  - **intake** (`agent/intake/`): resolves a request into `{player_id, target_year, mode}`. Stateless per call — the orchestrator always passes the full accumulated context (original request + every clarifying answer so far), so `resolve_intake()` builds a fresh Agent each call rather than holding its own conversation. Uses `find_player` (structured `first_name`/`last_name`/`position` filters, not a single free-text query — the agent reasons over *all* matches, never a silent first-match pick) and `get_contract_phase_timeline`.
+  - **predict** (`agent/predict/`): the existing, unchanged Phase 0 predictor, wrapped as `predict_tool` and additionally exposed as `predict_for()` for direct reuse. `mode="hypothetical_free_agent"` constructs a synthetic `PhaseResolution(phase="free-agent", method="hypothetical", ...)` directly in `predict_for()`, without touching `resolve_phase()`.
+- Each package owns its schema/prompts/logic and exports the tool interface a parent invokes (`agent/intake/resolver.py:intake_tool`, `agent/predict/tools.py:predict_tool`); shared logic (`config.py`, `phase.py`, `trace.py`, `service_time.py`, `metrics.py`) stays directly under `agent/`.
+- **Rationale**: a Strands `structured_output_model` is just one more callable tool internally (confirmed by reading `strands/tools/structured_output/structured_output_tool.py`), so an agent with both `tools=[...]` and a `structured_output_model` can call its own tools across multiple turns before finalizing structured output — this is what makes "sub-agent as a tool" work with plain `@tool`-decorated functions that invoke another `Agent` internally.
+- **Deliberate exception to Decision #5**: the orchestrator is the one persistent (non-fresh) agent in the system, scoped to its own back-and-forth with the user. The underlying prediction still gets its own fresh agent via the untouched `agent/predict/predictor.py`, so prediction reproducibility (Decision #6) is unaffected — the orchestrator's own conversation is traced separately (`predictions/conversations/{run_id}.json`, linking to the prediction's trace path) precisely because it's variable-length in a way the prediction trace deliberately isn't.
+- **Open design question from the original Phase 1 proposal resolved in practice**: rather than a strict one-shot parse or strict incremental slot-filling, intake extracts everything it can from the given context in one pass and the orchestrator iterates only on what's actually missing or ambiguous — closer to slot-filling in effect (only asks about gaps) without being mechanically one-field-at-a-time.
 
 ## Dataset
 
@@ -80,19 +92,42 @@ Arithmetic consistency (`total ≈ aav × duration`) is checked but recorded in 
 
 ```
 agent/
-├── config.py        # dotenv, DEFAULT_MODEL_ID, model-gated params, paths
-├── schema.py        # Citation, ContractPrediction
-├── phase.py         # deterministic phase resolver
-├── prompts.py       # PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
-├── predictor.py     # fresh-agent-per-run prediction (structured output)
-├── trace.py         # trace JSON + history.csv persistence
-├── predict.py       # CLI: python -m agent.predict / make predict
-├── backtest.py      # CLI: python -m agent.backtest / make backtest-agent
-└── tests/           # offline tests (no API key needed): make test-agent
+├── config.py          # dotenv, DEFAULT_MODEL_ID, model-gated params, paths
+├── phase.py            # deterministic phase resolver + project_phase_timeline()
+├── trace.py             # trace JSON + history.csv + conversation-trace persistence
+├── service_time.py       # normalize_service_time
+├── metrics.py             # backtest scoring metrics
+├── backtest.py             # CLI: python -m agent.backtest / make backtest-agent
+├── ask.py                   # CLI: python -m agent.ask "..." / make ask REQUEST="..."
+│
+├── predict/                  # Phase 0 predictor, packaged as a sub-agent
+│   ├── __init__.py             # re-exports run_prediction, lookup_player, actual_aav_for, predict_for
+│   ├── __main__.py              # python -m agent.predict --player-id ... --year ...
+│   ├── predict.py                 # lookup_player, run_prediction, predict_for(player_id, year, mode)
+│   ├── predictor.py                 # fresh-agent-per-run prediction (structured output)
+│   ├── prompts.py                    # PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
+│   ├── schema.py                       # Citation, ContractPrediction
+│   ├── tools.py                         # predict_tool — exported for the orchestrator
+│   └── tests/
+│
+├── intake/                    # NL request -> {player_id, target_year, mode}
+│   ├── schema.py                # IntakeResult
+│   ├── prompts.py                 # INTAKE_SYSTEM_PROMPT
+│   ├── tools.py                     # find_player, get_contract_phase_timeline
+│   ├── resolver.py                    # resolve_intake() + intake_tool (exported for the orchestrator)
+│   └── tests/
+│
+└── orchestrator/               # the one agent that talks to the user
+    ├── schema.py                 # OrchestratorTurn{message, done}
+    ├── prompts.py                  # ORCHESTRATOR_SYSTEM_PROMPT
+    ├── agent.py                      # create_orchestrator_agent(), run_conversation()
+    └── tests/
+
 predictions/
-├── traces/          # one JSON per run
-├── backtests/       # backtest summary JSONs
-└── history.csv      # append-only prediction log
+├── traces/            # one JSON per prediction run
+├── conversations/       # one JSON per orchestrator conversation, links to a trace path
+├── backtests/             # backtest summary JSONs
+└── history.csv               # append-only prediction log
 ```
 
 ## Validation Strategy
@@ -107,10 +142,9 @@ predictions/
 
 *Revised July 2026. Original plan led with tools (stats, then comps/heuristics); reordered because grounding known contracts correctly and accepting a natural-language request matter more right now than adding new tools, and neither depends on a new data source.*
 
-### Phase 1 — natural-language front door + contract-status routing (next up)
-- **Contract-status routing**: split the resolver's `projected` outcome into `known` (an observed contract row, or a year covered by an already-signed multi-year deal — return the actual figure, **no LLM call**) and `projected` (a genuine forecast). Add an explicit `hypothetical_free_agent` mode that deliberately ignores current contract status, for requests like "what would this player get in free agency right now."
-- **Natural-language request parsing**: replace the `--player-id`/`--name` + `--year` CLI contract with a single free-text request. Add an intent-resolution step that extracts {player, target year, mode} from the request, resolves player-name ambiguity against `players.csv`, and reports back plainly when it can't disambiguate rather than guessing.
-- **Open design question, not yet decided**: one-shot NL parse (extract all fields in a single structured-output call) vs. incremental slot-filling (the agent infers one field at a time — player, then year, then mode — surfacing ambiguity as soon as it appears, rather than after a full parse). Current lean is toward slot-filling, on the reasoning that a stripped-down prompt asking for one fact at a time gives tighter, more debuggable ambiguity handling than a single prompt trying to extract everything at once — but this is an opinion to validate, not a committed decision.
+### Phase 1 — natural-language front door + contract-status routing
+- **Natural-language request parsing — done.** `agent/ask.py` / `make ask REQUEST="..."` replaces the `--player-id`/`--name` + `--year` CLI contract with a single free-text request, handled by the orchestrator/intake/predict architecture in Design Decision #7. Intake resolves player-name ambiguity against `players.csv` via structured `find_player(first_name, last_name, position)` filters and reports back plainly (through the orchestrator) when it can't disambiguate, rather than guessing. `hypothetical_free_agent` mode is supported for "what would this player get in free agency right now" requests.
+- **Contract-status routing — still open.** The resolver's `projected` outcome still collapses "genuine forecast" and "year covered by an already-signed multi-year deal" together; splitting out a `known` outcome that returns the actual figure with **no LLM call** has not been built. `project_phase_timeline()` (Design Decision #4) gives intake visibility into a player's known/projected years, but `predict_tool` still always calls the LLM today, even for years that are actually already known.
 - Ships against the current dataset; no new data source required.
 
 ### Phase 2 — live data sourcing
@@ -145,4 +179,6 @@ Verified working unauthenticated (2026-07) with field names matching pybaseball'
 - `git show review-queue-agent:data_generation/review_queue_agent.py` — Strands agent conventions this package mirrors
 - `agent/service_time.py` — service time normalization
 - `agent/metrics.py` — shared metrics (used by backtest)
+- `agent/predict/predictor.py` — fresh-agent-per-call pattern (Decision #5)
+- `agent/orchestrator/agent.py` — the one persistent-agent exception (Decision #7), and the injectable-agent pattern `agent/orchestrator/tests/test_agent.py` uses to test the conversation loop without a live LLM call
 - `archive/v3/docs_pre_arb/` — the sklearn-era design docs this system supersedes (moved from `docs/pre_arb/`; sklearn models archived to `archive/v3/models/`)

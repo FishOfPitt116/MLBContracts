@@ -7,7 +7,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join predict backtest-agent test-agent
+.PHONY: dataset dataset-auto analyze review-queue join predict ask backtest-agent test-agent
 
 build: dataset
 
@@ -46,8 +46,12 @@ join:
 predict:
 	$(PYTHON) -m agent.predict --player-id $(PLAYER) --year $(YEAR)
 
+# Natural-language front door (Phase 1). Usage: make ask REQUEST="..."
+ask:
+	$(PYTHON) -m agent.ask "$(REQUEST)"
+
 backtest-agent:
 	$(PYTHON) -m agent.backtest --n-per-phase 5 --seed 42
 
 test-agent:
-	$(PYTHON) -m pytest agent/tests -q
+	$(PYTHON) -m pytest agent -q

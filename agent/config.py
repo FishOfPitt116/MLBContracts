@@ -19,6 +19,7 @@ PLAYERS_CSV = REPO_ROOT / "dataset" / "players.csv"
 PREDICTIONS_DIR = REPO_ROOT / "predictions"
 TRACES_DIR = PREDICTIONS_DIR / "traces"
 BACKTESTS_DIR = PREDICTIONS_DIR / "backtests"
+CONVERSATIONS_DIR = PREDICTIONS_DIR / "conversations"
 HISTORY_CSV = PREDICTIONS_DIR / "history.csv"
 
 # Model configuration. gpt-5* reasoning models reject sampling params like

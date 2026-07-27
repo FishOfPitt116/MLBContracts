@@ -12,6 +12,7 @@ from agent.phase import (
     PHASE_FA,
     PHASE_PRE_ARB,
     load_contract_history,
+    project_phase_timeline,
     resolve_phase,
 )
 
@@ -114,3 +115,43 @@ class TestEdgeCases:
         df = synthetic_history([row, row])
         res = resolve_phase("Doe_4", 2020, df)
         assert res.phase == PHASE_PRE_ARB
+
+
+class TestPhaseTimeline:
+    def test_scherzer_matches_real_career(self, contracts):
+        timeline = project_phase_timeline(SCHERZER, contracts)
+        assert timeline[PHASE_PRE_ARB] == [2011, 2011]
+        assert timeline[PHASE_ARB] == [2012, 2014]
+        assert timeline[PHASE_FA] == [2015, None]
+        assert timeline["caveats"]
+
+    def test_second_year_pre_arb_projects_full_trajectory(self):
+        # Mirrors the "2nd year of pre-arb" example: known 2025+2026 pre-arb
+        # rows, then projected forward through arb into free agency.
+        df = synthetic_history(
+            [
+                ["Doe_5_2025", "Doe_5", 23, 1.100, 2025, 1, 0.60, "pre-arb"],
+                ["Doe_5_2026", "Doe_5", 24, 1.150, 2026, 1, 0.62, "pre-arb"],
+            ]
+        )
+        timeline = project_phase_timeline("Doe_5", df)
+        assert timeline[PHASE_PRE_ARB] == [2025, 2027]
+        assert timeline[PHASE_ARB] == [2028, 2030]
+        assert timeline[PHASE_FA] == [2031, None]
+
+    def test_already_free_agent_is_open_ended(self, contracts):
+        timeline = project_phase_timeline(SCHERZER, contracts)
+        assert timeline[PHASE_FA][1] is None
+
+    def test_unknown_service_time_stops_projection(self):
+        df = synthetic_history(
+            [["Doe_6_2020", "Doe_6", 30, -1, 2020, 1, 5.0, "arb"]]
+        )
+        timeline = project_phase_timeline("Doe_6", df)
+        assert timeline[PHASE_ARB] == [2020, 2020]
+        assert timeline[PHASE_FA] is None
+        assert any("unknown service time" in c for c in timeline["caveats"])
+
+    def test_unknown_player_raises(self, contracts):
+        with pytest.raises(ValueError):
+            project_phase_timeline("Nobody_0", contracts)

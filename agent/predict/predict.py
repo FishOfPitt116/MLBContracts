@@ -12,9 +12,9 @@ from datetime import datetime
 import pandas as pd
 
 from agent.config import CONTRACTS_CSV, DEFAULT_MODEL_ID, PLAYERS_CSV
-from agent.phase import resolve_phase
-from agent.predictor import predict_contract
-from agent.prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
+from agent.phase import PhaseResolution, resolve_phase
+from agent.predict.predictor import predict_contract
+from agent.predict.prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
 from agent.trace import append_history, new_run_id, write_trace
 
 
@@ -47,12 +47,16 @@ def actual_aav_for(player_id, year):
     return float(row["value"]) / int(row["duration"])
 
 
-def run_prediction(player_row, year, model_id, quiet=False):
-    """Predict one player-year; persist trace + history. Returns the prediction."""
+def run_prediction(player_row, year, model_id, quiet=False, resolution=None):
+    """Predict one player-year; persist trace + history. Returns (prediction, trace_path).
+
+    resolution: an optional pre-resolved PhaseResolution (e.g. a synthetic
+    hypothetical-free-agent one from predict_for). Defaults to resolve_phase().
+    """
     player_id = player_row["player_id"]
     player_name = f"{player_row['first_name']} {player_row['last_name']}"
 
-    resolution = resolve_phase(player_id, year)
+    resolution = resolution if resolution is not None else resolve_phase(player_id, year)
     user_prompt = build_prediction_prompt(
         player_name=player_name,
         position=player_row["position"],
@@ -110,7 +114,53 @@ def run_prediction(player_row, year, model_id, quiet=False):
             print(f"  [{citation.source_type}] {citation.claim}")
             print(f"      basis: {citation.basis}")
         print(f"\nTrace: {trace_path}")
-    return prediction
+    return prediction, trace_path
+
+
+def predict_for(player_id, year, mode="predict", model_id=None):
+    """Resolve a player_id + year (+ mode) into a prediction summary dict.
+
+    mode="predict" resolves phase deterministically as usual. mode=
+    "hypothetical_free_agent" ignores the player's actual contract status
+    and forces a free-agent valuation, for requests like "what would this
+    player get in free agency right now."
+
+    Used by agent/predict/tools.py's predict_tool, so the orchestrator agent
+    can invoke a prediction without going through the direct-flags CLI.
+    """
+    model_id = model_id or DEFAULT_MODEL_ID
+    player_row = lookup_player(player_id=player_id)
+
+    if mode == "hypothetical_free_agent":
+        age = resolve_phase(player_id, year).age_estimate
+        resolution = PhaseResolution(
+            player_id=player_id,
+            year=year,
+            phase="free-agent",
+            method="hypothetical",
+            service_time_estimate=None,
+            age_estimate=age,
+            notes=[
+                "user requested a hypothetical free-agent valuation; "
+                "current contract status intentionally ignored"
+            ],
+        )
+    else:
+        resolution = resolve_phase(player_id, year)
+
+    prediction, trace_path = run_prediction(
+        player_row, year, model_id, quiet=True, resolution=resolution
+    )
+    return {
+        "aav_millions": prediction.aav_millions,
+        "duration_years": prediction.duration_years,
+        "total_value_millions": prediction.total_value_millions,
+        "aav_low_millions": prediction.aav_low_millions,
+        "aav_high_millions": prediction.aav_high_millions,
+        "confidence": prediction.confidence,
+        "reasoning": prediction.reasoning,
+        "trace_path": str(trace_path),
+    }
 
 
 def main():

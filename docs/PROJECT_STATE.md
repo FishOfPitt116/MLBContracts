@@ -67,7 +67,7 @@ The project direction shifted from sklearn models to an LLM agent that predicts 
 - **Citations from day one**: structured output requires a citation (claim + basis) per material figure; schema is forward-compatible with tool-sourced citations
 - **Deterministic phase resolution** (`agent/phase.py`): pre-arb/arb/FA resolved from Spotrac contract history, never by the LLM (super-two is a known caveat)
 - **Reproducibility**: every run persists a full trace JSON (`predictions/traces/`) and an append-only `predictions/history.csv` row, so projections fluctuate visibly across runs
-- **Harness**: `make predict PLAYER=... YEAR=...`, `make backtest-agent`, `make test-agent` (18 offline tests)
+- **Harness**: `make predict PLAYER=... YEAR=...` (direct flags), `make ask REQUEST="..."` (natural-language front door, Phase 1), `make backtest-agent`, `make test-agent` (41 offline tests)
 
 Preliminary Phase 0 baseline (13 scored predictions, partial seeded backtest):
 
@@ -136,7 +136,7 @@ The entire front-end and API layer doesn't exist yet. The archived sklearn pre-a
 
 In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
-1. **Agent Phase 1** — Natural-language front door (replace `--player-id`/`--year` flags with a free-text request the agent resolves, reporting ambiguity instead of guessing) + contract-status routing (stop "predicting" a number for players already under a known signed contract; add an explicit hypothetical-free-agency mode). Reordered ahead of new tools in July 2026 — see `docs/agent/DESIGN.md` Status/Roadmap for why.
+1. **Agent Phase 1** — Natural-language front door: **done** (July 2026). `agent/ask.py` / `make ask REQUEST="..."` resolves a free-text request via a three-tier orchestrator/intake/predict agent architecture (see `docs/agent/DESIGN.md` Design Decision #7), reporting ambiguity through natural-language clarifying questions instead of guessing. `hypothetical_free_agent` mode supports "what would they get in free agency right now." Still open: contract-status routing — the agent still calls the LLM even for years already covered by a known signed contract; `project_phase_timeline()` now gives the agent visibility into a player's known/projected years, but doesn't yet skip the LLM call for known ones.
 
 2. **Finish the Phase 0 baseline** — Complete a full seeded backtest (the first run was cut short at 13 predictions) and record the baseline to compare later phases against.
 
