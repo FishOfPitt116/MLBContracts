@@ -38,11 +38,19 @@ class TestObservedYears:
         assert res.method == "observed"
         # 2.079 in years.days -> 2 + 79/172
         assert res.service_time_estimate == pytest.approx(2 + 79 / 172)
+        # 2011 was a 1yr/$0.6M deal -> on-record AAV is just that $0.6M
+        assert res.known_value == {
+            "contract_id": "Scherzer_5166_2011",
+            "aav_millions": 0.6,
+            "duration_years": 1,
+            "total_value_millions": 0.6,
+        }
 
     def test_scherzer_2013_arb(self, contracts):
         res = resolve_phase(SCHERZER, 2013, contracts)
         assert res.phase == PHASE_ARB
         assert res.method == "observed"
+        assert res.known_value["aav_millions"] == pytest.approx(6.725)
 
     def test_scherzer_2015_free_agent(self, contracts):
         res = resolve_phase(SCHERZER, 2015, contracts)
@@ -50,6 +58,9 @@ class TestObservedYears:
         assert res.method == "observed"
         # service_time is the -1 sentinel for free agents
         assert res.service_time_estimate is None
+        # 2015 was the 7yr/$210M deal -> on-record AAV is $30M, not $210M
+        assert res.known_value["aav_millions"] == pytest.approx(30.0)
+        assert res.known_value["duration_years"] == 7
 
     def test_scherzer_2026_age_sentinel(self, contracts):
         # The 2026 row has age = -1; age must come from an earlier valid row
@@ -60,16 +71,25 @@ class TestObservedYears:
 
 class TestProjectedYears:
     def test_scherzer_2016_covered_by_multi_year_deal(self, contracts):
-        # 2015 7-year deal covers 2015-2021; no row exists for 2016
+        # 2015 7-year deal covers 2015-2021; no row exists for 2016, but the
+        # dollar figure is still on record -> method="known", not "projected"
         res = resolve_phase(SCHERZER, 2016, contracts)
         assert res.phase == PHASE_FA
-        assert res.method == "projected"
+        assert res.method == "known"
         assert any("under contract through 2021" in n for n in res.notes)
+        assert res.known_value == {
+            "contract_id": "Scherzer_5166_2015",
+            "aav_millions": 30.0,
+            "duration_years": 7,
+            "total_value_millions": 210.0,
+        }
 
     def test_scherzer_future_year_stays_free_agent(self, contracts):
+        # 2030 is beyond the last known deal -> a genuine forecast, no known_value
         res = resolve_phase(SCHERZER, 2030, contracts)
         assert res.phase == PHASE_FA
         assert res.method == "projected"
+        assert res.known_value is None
 
     def test_projection_crosses_pre_arb_to_arb(self):
         df = synthetic_history(

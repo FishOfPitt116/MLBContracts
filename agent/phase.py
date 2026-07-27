@@ -6,6 +6,16 @@ For years with an observed contract row, the row's Spotrac-sourced type is
 authoritative. For other years the phase is projected from the latest known
 service time (+1.0 service year per season).
 
+Contract-status routing: when the target year's dollar figure is already on
+record — an exact contract row (method="observed"), or a year covered by an
+earlier multi-year deal (method="known") — PhaseResolution.known_value carries
+the actual {aav_millions, duration_years, total_value_millions, contract_id}.
+Callers use this to skip the LLM entirely rather than "predicting" a number
+that's already public record (see agent/predict/predict.py:run_prediction and
+agent/intake/resolver.py, which attach it as early as intake). Genuine
+forward/backward projections (method="projected") have no known_value — those
+years actually need a forecast.
+
 Known limitation (super-two): each year the top ~22% of 2+ service-time
 players qualify for arbitration a year early. Service-time thresholds alone
 will classify those players as pre-arb. Acceptable for Phase 0; a richer
@@ -43,10 +53,11 @@ class PhaseResolution:
     player_id: str
     year: int
     phase: str
-    method: str  # "observed" (contract row for that year) or "projected"
+    method: str  # "observed" (exact row), "known" (covered by an earlier deal), or "projected"
     service_time_estimate: Optional[float] = None  # normalized (172-day year)
     age_estimate: Optional[int] = None
     notes: list = field(default_factory=list)
+    known_value: Optional[dict] = None  # set for "observed"/"known": the actual on-record figure
 
 
 def load_contract_history(contracts_csv=None):
@@ -74,6 +85,18 @@ def _year_range(years):
         return None
     ordered = sorted(years)
     return [ordered[0], ordered[-1]]
+
+
+def _known_value(row):
+    """The actual on-record {aav, duration, total, contract_id} for a contract row."""
+    duration = int(row["duration"])
+    value = float(row["value"])
+    return {
+        "contract_id": row["contract_id"],
+        "aav_millions": round(value / duration, 4),
+        "duration_years": duration,
+        "total_value_millions": value,
+    }
 
 
 def _estimate_age(rows, year):
@@ -126,9 +149,11 @@ def resolve_phase(player_id, year, contracts_df=None):
             service_time_estimate=st_norm,
             age_estimate=age,
             notes=notes,
+            known_value=_known_value(row),
         )
 
-    # 2. Mid-contract: target year covered by an earlier multi-year deal
+    # 2. Mid-contract: target year covered by an earlier multi-year deal.
+    # The dollar figure is already on record here too, not a forecast.
     covering = rows[(rows["year"] < year) & (rows["year"] + rows["duration"] > year)]
     if not covering.empty:
         row = covering.iloc[-1]
@@ -145,10 +170,11 @@ def resolve_phase(player_id, year, contracts_df=None):
             player_id=player_id,
             year=year,
             phase=row["type"],
-            method="projected",
+            method="known",
             service_time_estimate=st_norm,
             age_estimate=age,
             notes=notes,
+            known_value=_known_value(row),
         )
 
     prior = rows[rows["year"] < year]

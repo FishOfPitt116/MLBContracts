@@ -15,7 +15,41 @@ from agent.config import CONTRACTS_CSV, DEFAULT_MODEL_ID, PLAYERS_CSV
 from agent.phase import PhaseResolution, resolve_phase
 from agent.predict.predictor import predict_contract
 from agent.predict.prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
+from agent.predict.schema import Citation, ContractPrediction
 from agent.trace import append_history, new_run_id, write_trace
+
+
+def _known_prediction(resolution):
+    """Build a ContractPrediction straight from an on-record contract, no LLM call.
+
+    Used when resolution.known_value is set (agent/phase.py): the target year's
+    figure is already public record (an exact contract row, or a year covered
+    by an earlier multi-year deal), so "predicting" it would just be re-deriving
+    a known fact at LLM cost/latency.
+    """
+    kv = resolution.known_value
+    note = resolution.notes[-1] if resolution.notes else f"{kv['contract_id']} on record"
+    return ContractPrediction(
+        aav_millions=kv["aav_millions"],
+        duration_years=kv["duration_years"],
+        total_value_millions=kv["total_value_millions"],
+        aav_low_millions=kv["aav_millions"],
+        aav_high_millions=kv["aav_millions"],
+        reasoning=f"Already on record, not a prediction: {note}.",
+        citations=[
+            Citation(
+                source_type="tool",
+                claim=(
+                    f"{kv['contract_id']}: {kv['duration_years']}yr / "
+                    f"${kv['total_value_millions']}M (${kv['aav_millions']}M AAV)"
+                ),
+                basis="dataset/contracts_spotrac.csv (Spotrac-sourced contract record)",
+                tool_name="resolve_phase",
+                tool_call_ref=kv["contract_id"],
+            )
+        ],
+        confidence="high",
+    )
 
 
 def lookup_player(player_id=None, name=None):
@@ -47,25 +81,35 @@ def actual_aav_for(player_id, year):
     return float(row["value"]) / int(row["duration"])
 
 
-def run_prediction(player_row, year, model_id, quiet=False, resolution=None):
+def run_prediction(player_row, year, model_id, quiet=False, resolution=None, force_predict=False):
     """Predict one player-year; persist trace + history. Returns (prediction, trace_path).
 
     resolution: an optional pre-resolved PhaseResolution (e.g. a synthetic
     hypothetical-free-agent one from predict_for). Defaults to resolve_phase().
+
+    force_predict: if True, always calls the LLM even when resolution.known_value
+    is set. Used by the backtest harness, which deliberately measures LLM
+    accuracy against known historical outcomes — everywhere else (predict_for,
+    the direct CLI), a known year skips the LLM call entirely.
     """
     player_id = player_row["player_id"]
     player_name = f"{player_row['first_name']} {player_row['last_name']}"
 
     resolution = resolution if resolution is not None else resolve_phase(player_id, year)
-    user_prompt = build_prediction_prompt(
-        player_name=player_name,
-        position=player_row["position"],
-        player_id=player_id,
-        target_year=year,
-        phase_resolution=resolution,
-    )
 
-    prediction, messages, usage, latency = predict_contract(user_prompt, model_id)
+    if resolution.known_value is not None and not force_predict:
+        prediction = _known_prediction(resolution)
+        user_prompt = "(skipped: target year is already on record — see phase_resolution.known_value)"
+        messages, usage, latency = [], None, 0.0
+    else:
+        user_prompt = build_prediction_prompt(
+            player_name=player_name,
+            position=player_row["position"],
+            player_id=player_id,
+            target_year=year,
+            phase_resolution=resolution,
+        )
+        prediction, messages, usage, latency = predict_contract(user_prompt, model_id)
 
     run_id = new_run_id(player_id)
     trace_path = write_trace(
@@ -120,10 +164,12 @@ def run_prediction(player_row, year, model_id, quiet=False, resolution=None):
 def predict_for(player_id, year, mode="predict", model_id=None):
     """Resolve a player_id + year (+ mode) into a prediction summary dict.
 
-    mode="predict" resolves phase deterministically as usual. mode=
-    "hypothetical_free_agent" ignores the player's actual contract status
-    and forces a free-agent valuation, for requests like "what would this
-    player get in free agency right now."
+    mode="predict" resolves phase deterministically as usual — if the target
+    year turns out to already be on record (resolve_phase's known_value), no
+    LLM call happens at all; see run_prediction. mode="hypothetical_free_agent"
+    ignores the player's actual contract status and forces a free-agent
+    valuation, for requests like "what would this player get in free agency
+    right now" (never on-record by construction, always a real prediction).
 
     Used by agent/predict/tools.py's predict_tool, so the orchestrator agent
     can invoke a prediction without going through the direct-flags CLI.

@@ -37,3 +37,20 @@ class IntakeResult(BaseModel):
         default_factory=list,
         description="Any context worth surfacing (e.g. the phase timeline looked up for this player).",
     )
+    contract_status: Optional[Literal["known", "forecast"]] = Field(
+        default=None,
+        description=(
+            "Set by the harness after the LLM call, not by the model — leave null. "
+            "'known' means target_year's contract is already on record (a signed deal "
+            "covers it); 'forecast' means it genuinely needs a prediction. Only set when "
+            "status='ready' and mode='predict'."
+        ),
+    )
+    known_contract: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Set by the harness, not by the model — leave null. When contract_status="
+            "'known': {contract_id, aav_millions, duration_years, total_value_millions} "
+            "for the deal that covers target_year."
+        ),
+    )

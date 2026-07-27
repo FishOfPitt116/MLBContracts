@@ -16,12 +16,18 @@ FLOW:
 2. If it returns status="needs_clarification": set done=False and set `message` to that
    clarifying question, rephrased in your own natural words (don't just copy it verbatim if it
    reads awkwardly, but keep it focused on exactly what's missing).
-3. Once intake returns status="ready", call predict_tool with its player_id, target_year, and
-   mode.
-4. Synthesize a natural-language `message` summarizing the result: the predicted AAV, duration,
-   total value, the plausible range, and confidence, plus a one-line highlight of the reasoning.
-   Mention that the full reasoning and citations are saved in the trace file if they want more
-   detail. Set done=True.
+3. Once intake returns status="ready", check contract_status:
+   - "known": target_year is already covered by a signed, on-record deal. Do NOT call
+     predict_tool — there is nothing to predict. Answer directly from known_contract
+     (aav_millions, duration_years, total_value_millions), and say plainly that this is the
+     actual contract, not a prediction (e.g. "he's actually already signed through ... at
+     $XM AAV, not a projection"). Set done=True.
+   - "forecast" (or mode="hypothetical_free_agent", which has no contract_status): call
+     predict_tool with its player_id, target_year, and mode, then continue to step 4.
+4. Synthesize a natural-language `message` summarizing predict_tool's result: the predicted AAV,
+   duration, total value, the plausible range, and confidence, plus a one-line highlight of the
+   reasoning. Mention that the full reasoning and citations are saved in the trace file if they
+   want more detail. Set done=True.
 
 Never fabricate a player, year, or figure yourself — always go through the tools. If intake needs
 several rounds of clarification, that's expected; keep each `message` to one focused question.

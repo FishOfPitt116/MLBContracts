@@ -89,7 +89,9 @@ def main():
         print(f"predicting {contract['contract_id']} "
               f"({player_row['first_name']} {player_row['last_name']}, {contract['type']})...")
         try:
-            prediction, _ = run_prediction(player_row, year, args.model, quiet=True)
+            # force_predict: the backtest deliberately measures LLM accuracy against
+            # known historical outcomes, so it must not take the known-contract shortcut.
+            prediction, _ = run_prediction(player_row, year, args.model, quiet=True, force_predict=True)
         except Exception as error:
             print(f"  FAILED: {error}")
             results.append({

@@ -14,6 +14,28 @@ from agent.config import DEFAULT_MODEL_ID, model_params
 from agent.intake.prompts import INTAKE_SYSTEM_PROMPT
 from agent.intake.schema import IntakeResult
 from agent.intake.tools import find_player, get_contract_phase_timeline
+from agent.phase import resolve_phase
+
+
+def _attach_contract_status(intake_result):
+    """Deterministically label a ready 'predict' result known/forecast.
+
+    Never left to the LLM: phase resolution is harness-side (agent/phase.py),
+    and so is this. Done here, as early as intake, rather than waiting until
+    predict_tool runs, so the orchestrator can skip calling predict_tool (and
+    the LLM call inside it) entirely for a year that's already on record.
+    "hypothetical_free_agent" and not-yet-ready results are left untouched —
+    contract_status only applies to a resolved real-world prediction request.
+    """
+    if intake_result.status != "ready" or intake_result.mode != "predict":
+        return intake_result
+
+    resolution = resolve_phase(intake_result.player_id, intake_result.target_year)
+    if resolution.known_value is not None:
+        return intake_result.model_copy(
+            update={"contract_status": "known", "known_contract": resolution.known_value}
+        )
+    return intake_result.model_copy(update={"contract_status": "forecast"})
 
 
 def _import_strands():
@@ -46,7 +68,7 @@ def resolve_intake(context, model_id=None):
         system_prompt=INTAKE_SYSTEM_PROMPT,
     )
     result = agent(context, structured_output_model=IntakeResult)
-    return result.structured_output
+    return _attach_contract_status(result.structured_output)
 
 
 @tool
