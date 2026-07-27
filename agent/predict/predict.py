@@ -146,12 +146,15 @@ def run_prediction(player_row, year, model_id, quiet=False, resolution=None, for
         print(f"\n{player_name} ({player_id}) — {year} [{resolution.phase}, {resolution.method}]")
         for note in resolution.notes:
             print(f"  note: {note}")
-        print(
-            f"\nPrediction: {prediction.duration_years}yr x ${prediction.aav_millions}M AAV "
-            f"= ${prediction.total_value_millions}M total "
-            f"(range ${prediction.aav_low_millions}M-${prediction.aav_high_millions}M, "
-            f"confidence {prediction.confidence})"
-        )
+        if prediction.no_contract:
+            print(f"\nPrediction: no MLB contract expected (confidence {prediction.confidence})")
+        else:
+            print(
+                f"\nPrediction: {prediction.duration_years}yr x ${prediction.aav_millions}M AAV "
+                f"= ${prediction.total_value_millions}M total "
+                f"(range ${prediction.aav_low_millions}M-${prediction.aav_high_millions}M, "
+                f"confidence {prediction.confidence})"
+            )
         if actual is not None:
             print(f"Actual AAV: ${actual:.3f}M")
         note = prediction.arithmetic_note()
@@ -203,6 +206,7 @@ def predict_for(player_id, year, mode="predict", model_id=None):
         player_row, year, model_id, quiet=True, resolution=resolution
     )
     return {
+        "no_contract": prediction.no_contract,
         "aav_millions": prediction.aav_millions,
         "duration_years": prediction.duration_years,
         "total_value_millions": prediction.total_value_millions,

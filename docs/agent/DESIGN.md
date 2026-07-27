@@ -137,7 +137,7 @@ predictions/
 
 - **Offline unit tests** (`make test-agent`): phase resolver against Max Scherzer's real career (pre-arb 2011 → arb 2012-14 → FA 2015+, sentinels, mid-contract years) plus synthetic crossover cases; schema round-trip and citation constraints; trace/history writing
 - **Live checks**: one prediction per phase; verify citations per material figure, trace + history artifacts
-- **Backtest harness** (`make backtest-agent`): seeded N-per-phase sample of historical contracts, scored on AAV with `agent/metrics.py` metrics at phase-scaled tolerances (±$0.25M pre-arb / ±$1M arb / ±$5M FA)
+- **Backtest harness** (`make backtest-agent`): seeded N-per-phase sample of historical contracts, scored on AAV with `agent/metrics.py` metrics at phase-scaled tolerances — absolute for pre-arb/arb (±$0.25M / ±$1M, salaries cluster tightly), **relative** for free-agent (±20%, not a flat $5M — a real backtest run surfaced a $1.35M veteran deal and a $20M ace deal in the same sample, where a flat dollar band trivially "passes" a 100%-off miss on the cheap deal while being genuinely strict on the expensive one). `agent/predict/schema.py` also gained `ge=1`/`gt=0` constraints on `duration_years`/`aav_millions`/`total_value_millions` after that same run returned a degenerate 0yr/$0M "prediction" for a real signed player (Hinske_852_2013) that slipped through with no constraint to catch it.
 
 **Training-data contamination caveat**: in Phase 0 the LLM has likely memorized many historical contract outcomes, so backtests on past contracts measure recall as much as prediction. They are harness scaffolding and a citation-quality check. The honest test is predictions for upcoming contracts accumulating in `predictions/history.csv` and scored once actuals land.
 

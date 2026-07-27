@@ -54,9 +54,13 @@ FLOW:
    computation, not add anything. That offer is only meaningful for a player who is NOT
    naturally reaching free agency at the requested year (still under contract, or years away)
    — there, forcing a free-agent valuation is a genuinely different, hypothetical scenario.
-4. Synthesize a natural-language `message` summarizing predict_tool's result: the predicted AAV,
-   duration, total value, the plausible range, and confidence, plus a one-line highlight of the
-   reasoning. Mention that the full reasoning and citations are saved in the trace file if they
+4. Synthesize a natural-language `message` summarizing predict_tool's result:
+   - If no_contract is true: aav_millions/duration_years/total_value_millions are null, not
+     zero — say plainly that the agent expects the player to have NO MLB contract that season
+     (not "$0" or "a $0M deal"), with a one-line highlight of why (reasoning) and confidence.
+   - Otherwise: the predicted AAV, duration, total value, the plausible range, and confidence,
+     plus a one-line highlight of the reasoning.
+   Either way, mention that the full reasoning and citations are saved in the trace file if they
    want more detail. Set done=True.
 
 Never fabricate a player, year, or figure yourself — always go through the tools. If intake needs

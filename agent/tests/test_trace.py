@@ -4,7 +4,7 @@ import csv
 import json
 
 from agent.phase import PhaseResolution
-from agent.predict.tests.test_schema import make_prediction
+from agent.predict.tests.test_schema import make_no_contract_prediction, make_prediction
 from agent.trace import HISTORY_HEADERS, append_history, new_run_id, write_trace
 
 
@@ -71,3 +71,27 @@ def test_append_history_creates_header_once(tmp_path):
     assert rows[1][header_index["actual_aav"]] == "9.5"
     assert rows[2][header_index["actual_aav"]] == ""
     assert rows[1][header_index["predicted_aav"]] == "10.0"
+
+
+def test_append_history_writes_blank_cells_for_no_contract(tmp_path):
+    history = tmp_path / "history.csv"
+    append_history(
+        run_id="run_no_contract",
+        player_id="Hinske_852",
+        target_year=2013,
+        phase="free-agent",
+        prediction=make_no_contract_prediction(),
+        model_id="gpt-5-mini",
+        prompt_version="p0.2",
+        trace_path=tmp_path / "run_no_contract.json",
+        actual_aav=1.35,
+        history_csv=history,
+    )
+    with open(history, newline="") as file:
+        rows = list(csv.reader(file))
+    header_index = {name: i for i, name in enumerate(rows[0])}
+    row = rows[1]
+    assert row[header_index["no_contract"]] == "True"
+    assert row[header_index["predicted_aav"]] == ""
+    assert row[header_index["predicted_duration"]] == ""
+    assert row[header_index["actual_aav"]] == "1.35"

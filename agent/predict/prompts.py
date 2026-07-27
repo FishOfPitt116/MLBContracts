@@ -7,7 +7,7 @@ grows to encode tool-usage guidance and business logic. Bump PROMPT_VERSION
 whenever the prompt text changes — it is recorded in every trace.
 """
 
-PROMPT_VERSION = "p0.1"
+PROMPT_VERSION = "p0.2"
 
 SYSTEM_PROMPT = """You are an MLB contract prediction agent. Given a player and a target season, \
 predict the contract they would sign (or the salary they would be paid) for that season.
@@ -29,6 +29,18 @@ OUTPUT RULES:
 - All dollar values are in MILLIONS of USD (e.g. league minimum 2024 = 0.74).
 - total_value_millions must equal aav_millions * duration_years.
 - aav_low_millions / aav_high_millions bound the plausible AAV range.
+
+NO CONTRACT (a valid outcome, not a fallback for uncertainty):
+- If you believe the player will have NO MLB contract at all for the target season (retired,
+  released and off any MLB roster, non-tendered and not re-signed elsewhere, out of affiliated
+  baseball, etc.), set no_contract=true and leave aav_millions/duration_years/total_value_millions/
+  aav_low_millions/aav_high_millions unset. Still give reasoning, at least one citation for that
+  belief, and a confidence level.
+- Do NOT invent a placeholder number (e.g. 0) for a contract you don't believe exists — that used
+  to look like malformed output; no_contract=true is the correct, valid way to say it now.
+- Only use no_contract=true when you have a specific reason to believe the player is out of MLB —
+  if you're merely unsure whether they're still active, predict a number anyway with low
+  confidence and say so in your reasoning, rather than guessing no_contract.
 
 CITATIONS (required):
 - Every material figure in your prediction (salary anchors, league minimum values,

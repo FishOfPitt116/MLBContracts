@@ -27,9 +27,12 @@ from agent.predict import run_prediction
 
 PHASES = ["pre-arb", "arb", "free-agent"]
 
-# Tolerance (in $M) for the pct-within-tolerance metric, scaled to the salary
-# range typical of each phase.
-PHASE_TOLERANCES = {"pre-arb": 0.25, "arb": 1.0, "free-agent": 5.0}
+# Tolerance for the pct-within-tolerance metric, scaled to each phase. pre-arb/arb
+# salaries cluster tightly, so an absolute dollar band works; free-agent deals span
+# nearly two orders of magnitude in one sample (a $1.35M veteran vs. a $20M ace), where
+# a flat dollar band is meaningless — use a relative (percentage) tolerance instead.
+PHASE_TOLERANCES = {"pre-arb": 0.25, "arb": 1.0, "free-agent": 0.20}
+PHASE_TOLERANCE_IS_RELATIVE = {"pre-arb": False, "arb": False, "free-agent": True}
 
 CAVEAT = (
     "CAVEAT: Phase 0 backtests are contaminated — the LLM has likely memorized\n"
@@ -105,9 +108,13 @@ def main():
             "phase": contract["type"],
             "year": year,
             "actual_aav": actual_aav,
-            "predicted_aav": prediction.aav_millions,
+            "no_contract": prediction.no_contract,
+            # A no_contract prediction against a real signed deal is a complete miss --
+            # score it as a predicted $0/0yr so it counts fully against the metrics
+            # instead of crashing on the None the schema now leaves those fields as.
+            "predicted_aav": 0.0 if prediction.no_contract else prediction.aav_millions,
             "actual_duration": int(contract["duration"]),
-            "predicted_duration": prediction.duration_years,
+            "predicted_duration": 0 if prediction.no_contract else prediction.duration_years,
             "confidence": prediction.confidence,
             "n_citations": len(prediction.citations),
         })
@@ -120,7 +127,12 @@ def main():
             continue
         y_true = [r["actual_aav"] for r in phase_results]
         y_pred = [r["predicted_aav"] for r in phase_results]
-        metrics = calculate_all_metrics(y_true, y_pred, tolerance=PHASE_TOLERANCES[phase])
+        metrics = calculate_all_metrics(
+            y_true,
+            y_pred,
+            tolerance=PHASE_TOLERANCES[phase],
+            relative=PHASE_TOLERANCE_IS_RELATIVE[phase],
+        )
         summary["metrics_by_phase"][phase] = metrics
         print(f"\n--- {phase} ---")
         print(format_metrics_report(metrics))
