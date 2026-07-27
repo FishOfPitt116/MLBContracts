@@ -31,4 +31,6 @@ def model_params(model_id):
     """Return OpenAI params appropriate for the model family."""
     if model_id.startswith("gpt-4o"):
         return {"temperature": 0.1}
+    if model_id.startswith("gpt-5"):
+        return {"reasoning_effort": "low"}
     return {}
