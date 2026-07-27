@@ -14,7 +14,7 @@ import sys
 from argparse import ArgumentParser
 
 from agent.config import DEFAULT_MODEL_ID
-from agent.orchestrator.agent import run_conversation
+from agent.orchestrator.agent import EXIT_INPUTS, run_conversation
 from agent.trace import new_run_id, write_conversation_trace
 
 INTRO_TEXT = """MLB Contract Prediction Assistant
@@ -70,11 +70,15 @@ def main():
     else:
         print(INTRO_TEXT)
         request = input("> ")
-    if not request.strip():
-        sys.exit("A request is required.")
+    if request.strip().lower() in EXIT_INPUTS:
+        print("Goodbye!")
+        sys.exit(0)
 
     ask(request, model_id=args.model)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit("\nCancelled.")
