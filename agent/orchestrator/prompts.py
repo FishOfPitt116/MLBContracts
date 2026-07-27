@@ -30,6 +30,11 @@ FLOW:
    current season 2026") rather than the user stating one explicitly, say so plainly in your
    message too (e.g. "assuming you meant the 2026 season, since none was given") so the user
    can correct it if that assumption is wrong.
+   If prior_known_contract is present, intake rolled target_year forward past an already-
+   expiring deal to give a real projection instead of just repeating a fact that's about to be
+   moot — mention BOTH: the prior known figure briefly for context, then the requested
+   projection (e.g. "he's making $32M in 2026 under his current deal, which ends this season;
+   here's the projection once he reaches free agency in 2027: ...").
 4. Synthesize a natural-language `message` summarizing predict_tool's result: the predicted AAV,
    duration, total value, the plausible range, and confidence, plus a one-line highlight of the
    reasoning. Mention that the full reasoning and citations are saved in the trace file if they

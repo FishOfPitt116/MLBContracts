@@ -37,6 +37,25 @@ class IntakeResult(BaseModel):
         default_factory=list,
         description="Any context worth surfacing (e.g. the phase timeline looked up for this player).",
     )
+    year_was_defaulted: bool = Field(
+        default=False,
+        description=(
+            "True when you filled in target_year yourself (current season, or a phase-"
+            "milestone year) rather than the user stating one explicitly. False when the "
+            "user gave an explicit year — always honor their explicit choice as-is."
+        ),
+    )
+    wants_forecast: bool = Field(
+        default=True,
+        description=(
+            "True (the default) unless the request is clearly asking about the player's "
+            "actual/current/already-signed status rather than a future projection — e.g. "
+            "'what is his current salary', 'how much is he making this year', 'what's he "
+            "actually signed for'. Leave True for anything phrased as a prediction/forecast "
+            "('projected contract', 'what will he get', 'predict his next deal'), which is "
+            "the common case for this assistant."
+        ),
+    )
     contract_status: Optional[Literal["known", "forecast"]] = Field(
         default=None,
         description=(
@@ -52,5 +71,15 @@ class IntakeResult(BaseModel):
             "Set by the harness, not by the model — leave null. When contract_status="
             "'known': {contract_id, aav_millions, duration_years, total_value_millions, "
             "start_year, end_year} for the deal that covers target_year."
+        ),
+    )
+    prior_known_contract: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Set by the harness, not by the model — leave null. Populated when a defaulted, "
+            "forecast-seeking target_year got auto-advanced past an already-expiring known "
+            "deal (see year_was_defaulted/wants_forecast): the on-record figure for the year "
+            "just before target_year, so the assistant can mention it alongside the "
+            "projection instead of only giving one or the other."
         ),
     )
