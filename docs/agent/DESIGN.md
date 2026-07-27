@@ -103,13 +103,14 @@ agent/
 ├── backtest.py             # CLI: python -m agent.backtest / make backtest-agent
 ├── ask.py                   # CLI: python -m agent.ask "..." / make ask REQUEST="..."
 │
-├── predict/                  # Phase 0 predictor, packaged as a sub-agent
+├── predict/                  # predictor, packaged as a sub-agent (Phase 0 baseline + Phase 2 tools)
 │   ├── __init__.py             # re-exports run_prediction, lookup_player, actual_aav_for, predict_for
 │   ├── __main__.py              # python -m agent.predict --player-id ... --year ...
 │   ├── predict.py                 # lookup_player, run_prediction, predict_for(player_id, year, mode)
 │   ├── predictor.py                 # fresh-agent-per-run prediction (structured output)
 │   ├── prompts.py                    # PROMPT_VERSION, SYSTEM_PROMPT, build_prediction_prompt
 │   ├── schema.py                       # Citation, ContractPrediction
+│   ├── comparables.py                   # query_comparable_contracts — the agent's own tool (Phase 2)
 │   ├── tools.py                         # predict_tool — exported for the orchestrator
 │   └── tests/
 │
@@ -151,17 +152,20 @@ predictions/
 - Ships against the current dataset; no new data source required.
 
 ### Phase 2 — live data sourcing
-- **Stats**: live MLB Stats API tool (`statsapi.mlb.com`) — the agent fetches a player's recent seasons on demand instead of us maintaining stats CSVs. Covers every standard batting/pitching stat the old pipeline consumed (G, PA, HR, RBI, AVG/OBP/SLG/OPS, SO, BB, ERA, WHIP, IP, K/BB, saves, holds...). Does **not** provide FanGraphs-proprietary metrics: WAR, wRC+, FIP/xFIP/SIERA, or Statcast-derived rates (HardHit%, Barrel%, GB%/FB%). Expected effect: estimates improve sharply for post-cutoff performance (the Skubal case), and citations become `source_type="tool"` with specific stat lines as evidence.
+- **Comparable contracts — done (July 2026), resequenced ahead of stats.** `agent/predict/comparables.py:query_comparable_contracts` — the predict agent's first tool, breaking Design Decision #2's tool-less baseline. Queries `dataset/contracts_spotrac.csv` (the same contracts-only dataset `agent/phase.py` resolves phases from) joined with `dataset/players.csv` for position, filterable on player_id (a player's own history), position, phase, age range, and year range. Deliberately **not** backed by `dataset/contracts_with_stats.csv` — this tool covers contract facts only; stat-line comparability (WAR, HR, ERA, etc.) stays model-knowledge until a stats source is wired in as its own later tool, per the incremental "move one category from memory to tool at a time" approach the system prompt now documents explicitly. This was originally scoped under Phase 4 ("Comparable-contracts tool over the historical contracts dataset") but pulled forward as the first Phase 2 tool instead of live stats, since it needed no new external dependency and directly closes a gap the backtest surfaced (the agent inventing comparable-contract figures from memory).
+  - **service_time is NOT a filter, dropped after a live-verified dataset gap** (tracked in `docs/PROJECT_STATE.md`'s Open Issues): 100% of free-agent rows carry Spotrac's `service_time=-1` "not tracked" sentinel, so any query combining `phase="free-agent"` with a service-time bound returned zero matches unconditionally — confirmed live on a Skubal 2027 projection: a free-agent-SP search with a service-time bound found nothing, but dropping only that bound surfaced 161 real matches, several at $22-30M AAV, that the model never saw. `service_time` is still returned per match for context (correctly `null` for free agents), just not filterable, until the underlying dataset gap is investigated.
+  - System prompt (`agent/predict/prompts.py`, bumped to `PROMPT_VERSION = "p0.3"`) now has a **mandatory tool use** section: the target player's own contract history and comparable-other-player contracts MUST come from the tool, never memory; everything else (performance/stat-line judgment, CBA figures, market dynamics) still relies on model knowledge, exactly as Phase 0 did. Citations for tool-grounded claims use `source_type="tool"`, `tool_name="query_comparable_contracts"`, `tool_call_ref=<contract_id>` — verified live (Skubal 2027 free-agent projection): three tool calls (own history, then two comparable searches with adaptively narrowed filters after zero matches), citations correctly split between tool-grounded facts and the one genuinely tool-uncovered market-judgment claim.
+- **Stats**: live MLB Stats API tool (`statsapi.mlb.com`) — the agent fetches a player's recent seasons on demand instead of us maintaining stats CSVs. Covers every standard batting/pitching stat the old pipeline consumed (G, PA, HR, RBI, AVG/OBP/SLG/OPS, SO, BB, ERA, WHIP, IP, K/BB, saves, holds...). Does **not** provide FanGraphs-proprietary metrics: WAR, wRC+, FIP/xFIP/SIERA, or Statcast-derived rates (HardHit%, Barrel%, GB%/FB%). Expected effect: estimates improve sharply for post-cutoff performance (the Skubal case), and citations become `source_type="tool"` with specific stat lines as evidence. Still open — the next Phase 2 tool.
 - **Contracts**: no public API for actual signed dollar figures is known to exist — Spotrac (what we already scrape) remains close to the only free source. "Don't rely on our dataset" most likely means moving from a batch-scraped CSV to on-demand/cached live fetches of the same source, not switching to a different one. Scope as its own spike, separate from the stats swap.
 - **Player identity**: same caveat as contracts — replacing `players.csv` lookups with a live source needs its own investigation before Phase 1's NL front door can drop the dataset dependency entirely.
-- System prompt grows: tool-usage guidance, instruction to prefer tool evidence over memory.
+- System prompt grows incrementally as each tool lands: tool-usage guidance, instruction to prefer tool evidence over memory for whatever that specific tool now covers.
 
 ### Phase 3 — multi-year forecasting
 - Extend the schema/prompt to accept a target-year range and optional user-supplied assumptions (stat trajectories, injury status, etc.) instead of a single target year.
 - Wants Phase 2's live stats in place first — forecasting several years out purely from training memory isn't much better than Phase 0.
 
 ### Phase 4 — team conditioning + guardrails
-- Comparable-contracts tool over the historical contracts dataset; league-minimum/CBA schedule and arb-raise-pattern heuristic tools; richer system prompt carrying business rules (counting stats drive arb salaries; aging curves for FA duration).
+- League-minimum/CBA schedule and arb-raise-pattern heuristic tools; richer system prompt carrying business rules (counting stats drive arb salaries; aging curves for FA duration). (Comparable-contracts tool originally scoped here moved to Phase 2 — see above.)
 - Scenario support: team-specific predictions and user-defined constraints/guardrails on the prediction, as first-class request inputs.
 - Deferred last — benefits most from a stable multi-year forecasting core (Phase 3) and comps/team-context data (this phase) to condition on; building it earlier would mean guessing at an interface that's still moving.
 

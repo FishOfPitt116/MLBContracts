@@ -97,6 +97,14 @@ A daily workflow (`daily-dataset.yml`) was set up to run the full data pipeline 
 
 **Decision (July 2026)**: with the shift to the agent architecture, current-season stats will be consumed as a **live MLB Stats API tool** in agent Phase 1 rather than by maintaining our own stats CSVs. That covers every standard stat the pipeline consumed but not the FanGraphs-proprietary metrics (WAR, wRC+, FIP/xFIP/SIERA, Statcast rates). If the historical stats CSVs ever need refreshing (e.g. for a comps tool with WAR), a verified fallback exists: FanGraphs' current JSON API with pybaseball-compatible fields — see `docs/agent/DESIGN.md` Appendix A.
 
+### `contracts_spotrac.csv`: service_time is never tracked for free agents
+
+Discovered live (July 2026) while testing the agent's `query_comparable_contracts` tool: **100% of free-agent rows** (2,084 of 2,084) carry Spotrac's `service_time = -1` "not tracked" sentinel — not sometimes-missing, always missing. Spotrac apparently stops recording it once a player clears the point where it no longer gates arbitration/free-agency eligibility.
+
+Consequence: any query filtering free-agent contracts by service time returns zero matches unconditionally, regardless of how many real comparables exist — confirmed live: a search for free-agent SPs aged 29-31 with a service-time bound found nothing, but dropping only the service-time bound surfaced 161 real matches, several at $22-30M AAV. This isn't a bug in the query logic; the underlying data simply has no signal there for free agents. Worked around for now by dropping service_time as a filter dimension entirely from `query_comparable_contracts` (`agent/predict/comparables.py`) — age/position/phase/year are used for free-agent comparability instead. `service_time` is still returned per match for context (correctly `null` for free agents, populated for pre-arb/arb).
+
+**Not yet investigated**: whether this is fixable (a different Spotrac field, or a computable proxy — e.g. debut year plus active-year count) or is a genuine gap in the source data that has to stay a known limitation.
+
 ### Arb Model Tier Accuracy Targets Not Met
 
 The ±10% per-tier tolerance at 95% is very aggressive. The best per-tier result is 39.9% vs. the 95% target. Root causes identified in the model docs:

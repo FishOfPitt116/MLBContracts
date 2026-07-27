@@ -1,4 +1,9 @@
-"""Phase 0 prediction agent: LLM-only, no tools, structured output.
+"""Prediction agent: structured output, now with its first Phase 2 tool.
+
+Phase 0 was deliberately tool-less; Phase 2 adds query_comparable_contracts
+(agent/predict/comparables.py) so comparable-contract reasoning is grounded in
+real records instead of training memory. Stat-line grounding is still Phase 0
+(model knowledge) until a stats data source is wired in as a later tool.
 
 A fresh Agent is created per prediction (unlike the review-queue agent, which
 reuses one agent across queue items) so conversation state never bleeds
@@ -10,6 +15,7 @@ import sys
 import time
 
 from agent.config import DEFAULT_MODEL_ID, model_params
+from agent.predict.comparables import query_comparable_contracts
 from agent.predict.prompts import SYSTEM_PROMPT
 from agent.predict.schema import ContractPrediction
 from agent.tool_logging import ToolCallLogger
@@ -34,7 +40,7 @@ def _import_strands():
 
 
 def create_agent(model_id=None):
-    """Create a fresh, tool-less Strands agent for one prediction."""
+    """Create a fresh Strands agent for one prediction."""
     Agent, OpenAIModel, _ = _import_strands()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -43,7 +49,12 @@ def create_agent(model_id=None):
 
     model_id = model_id or DEFAULT_MODEL_ID
     model = OpenAIModel(model_id=model_id, params=model_params(model_id))
-    return Agent(model=model, system_prompt=SYSTEM_PROMPT, hooks=[ToolCallLogger()])
+    return Agent(
+        model=model,
+        system_prompt=SYSTEM_PROMPT,
+        tools=[query_comparable_contracts],
+        hooks=[ToolCallLogger()],
+    )
 
 
 def predict_contract(user_prompt, model_id=None):
