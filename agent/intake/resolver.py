@@ -11,7 +11,7 @@ import sys
 from strands import tool
 
 from agent.config import DEFAULT_MODEL_ID, model_params
-from agent.intake.prompts import INTAKE_SYSTEM_PROMPT
+from agent.intake.prompts import build_intake_system_prompt
 from agent.intake.schema import IntakeResult
 from agent.intake.tools import find_player, get_contract_phase_timeline
 from agent.phase import resolve_phase
@@ -65,7 +65,7 @@ def resolve_intake(context, model_id=None):
     agent = Agent(
         model=model,
         tools=[find_player, get_contract_phase_timeline],
-        system_prompt=INTAKE_SYSTEM_PROMPT,
+        system_prompt=build_intake_system_prompt(),
     )
     result = agent(context, structured_output_model=IntakeResult)
     return _attach_contract_status(result.structured_output)

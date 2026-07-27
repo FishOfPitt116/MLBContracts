@@ -50,7 +50,7 @@ class IntakeResult(BaseModel):
         default=None,
         description=(
             "Set by the harness, not by the model — leave null. When contract_status="
-            "'known': {contract_id, aav_millions, duration_years, total_value_millions} "
-            "for the deal that covers target_year."
+            "'known': {contract_id, aav_millions, duration_years, total_value_millions, "
+            "start_year, end_year} for the deal that covers target_year."
         ),
     )

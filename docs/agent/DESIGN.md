@@ -113,7 +113,7 @@ agent/
 │
 ├── intake/                    # NL request -> {player_id, target_year, mode}
 │   ├── schema.py                # IntakeResult
-│   ├── prompts.py                 # INTAKE_SYSTEM_PROMPT
+│   ├── prompts.py                 # build_intake_system_prompt() (current-year-aware)
 │   ├── tools.py                     # find_player, get_contract_phase_timeline
 │   ├── resolver.py                    # resolve_intake() + intake_tool (exported for the orchestrator)
 │   └── tests/

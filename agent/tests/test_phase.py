@@ -44,6 +44,8 @@ class TestObservedYears:
             "aav_millions": 0.6,
             "duration_years": 1,
             "total_value_millions": 0.6,
+            "start_year": 2011,
+            "end_year": 2011,
         }
 
     def test_scherzer_2013_arb(self, contracts):
@@ -82,6 +84,8 @@ class TestProjectedYears:
             "aav_millions": 30.0,
             "duration_years": 7,
             "total_value_millions": 210.0,
+            "start_year": 2015,
+            "end_year": 2021,
         }
 
     def test_scherzer_future_year_stays_free_agent(self, contracts):

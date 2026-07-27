@@ -28,7 +28,12 @@ def _known_prediction(resolution):
     a known fact at LLM cost/latency.
     """
     kv = resolution.known_value
-    note = resolution.notes[-1] if resolution.notes else f"{kv['contract_id']} on record"
+    span = (
+        str(kv["start_year"])
+        if kv["start_year"] == kv["end_year"]
+        else f"{kv['start_year']}-{kv['end_year']}"
+    )
+    note = f"{kv['contract_id']}: {kv['duration_years']}yr / ${kv['total_value_millions']}M ({span})"
     return ContractPrediction(
         aav_millions=kv["aav_millions"],
         duration_years=kv["duration_years"],

@@ -28,6 +28,8 @@ def test_year_covered_by_a_signed_deal_is_known():
         "aav_millions": 30.0,
         "duration_years": 7,
         "total_value_millions": 210.0,
+        "start_year": 2015,
+        "end_year": 2021,
     }
 
 

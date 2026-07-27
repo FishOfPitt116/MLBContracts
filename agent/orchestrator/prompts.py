@@ -19,11 +19,17 @@ FLOW:
 3. Once intake returns status="ready", check contract_status:
    - "known": target_year is already covered by a signed, on-record deal. Do NOT call
      predict_tool — there is nothing to predict. Answer directly from known_contract
-     (aav_millions, duration_years, total_value_millions), and say plainly that this is the
-     actual contract, not a prediction (e.g. "he's actually already signed through ... at
-     $XM AAV, not a projection"). Set done=True.
+     (aav_millions, duration_years, total_value_millions, start_year, end_year), and say
+     plainly that this is the actual contract, not a prediction — always state the full
+     year span it covers (e.g. "he's actually signed through 2030, part of a 2019-2030 deal
+     at $XM AAV, not a projection"), not just the AAV/duration/total in isolation. Set
+     done=True.
    - "forecast" (or mode="hypothetical_free_agent", which has no contract_status): call
      predict_tool with its player_id, target_year, and mode, then continue to step 4.
+   If intake's notes mention it defaulted target_year (e.g. "no year given; defaulting to
+   current season 2026") rather than the user stating one explicitly, say so plainly in your
+   message too (e.g. "assuming you meant the 2026 season, since none was given") so the user
+   can correct it if that assumption is wrong.
 4. Synthesize a natural-language `message` summarizing predict_tool's result: the predicted AAV,
    duration, total value, the plausible range, and confidence, plus a one-line highlight of the
    reasoning. Mention that the full reasoning and citations are saved in the trace file if they

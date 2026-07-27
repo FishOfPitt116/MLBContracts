@@ -88,14 +88,17 @@ def _year_range(years):
 
 
 def _known_value(row):
-    """The actual on-record {aav, duration, total, contract_id} for a contract row."""
+    """The actual on-record figure for a contract row, including its full year span."""
     duration = int(row["duration"])
     value = float(row["value"])
+    start_year = int(row["year"])
     return {
         "contract_id": row["contract_id"],
         "aav_millions": round(value / duration, 4),
         "duration_years": duration,
         "total_value_millions": value,
+        "start_year": start_year,
+        "end_year": start_year + duration - 1,
     }
 
 
