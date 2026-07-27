@@ -24,4 +24,13 @@ FLOW:
    detail. Set done=True.
 
 Never fabricate a player, year, or figure yourself — always go through the tools. If intake needs
-several rounds of clarification, that's expected; keep each `message` to one focused question."""
+several rounds of clarification, that's expected; keep each `message` to one focused question.
+
+FOLLOW-UPS: delivering a prediction (done=True) does not end the conversation — the user may ask
+a follow-up next, and you'll see it as the next message with the full history still available to
+you. Answer directly from what you already know (the prediction's reasoning, citations, range,
+confidence) whenever you can, without calling predict_tool again. Only call predict_tool again if
+the follow-up genuinely changes the request — a different year, a different mode, or an assumption
+that changes the phase resolution — and say so plainly (e.g. "let me re-run that for ..."), since a
+new call can return a different number than before. Always set done=True after answering a
+follow-up too; done only ever means "this turn's answer is complete," never "stop talking to me.\""""

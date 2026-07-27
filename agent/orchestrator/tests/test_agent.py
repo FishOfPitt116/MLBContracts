@@ -37,7 +37,8 @@ def test_asks_clarifying_question_then_resolves():
             OrchestratorTurn(message="Scherzer will make $5M in 2026.", done=True),
         ]
     )
-    replies = iter(["2026"])
+    # "2026" answers the clarifying question; "" declines a follow-up and ends it.
+    replies = iter(["2026", ""])
     turns = run_conversation(
         "what will Scherzer make?", agent=agent, ask_fn=lambda _: next(replies)
     )
@@ -46,6 +47,33 @@ def test_asks_clarifying_question_then_resolves():
     assert turns[1]["done"] is True
     # the clarifying answer was fed back in as the next call's input
     assert agent.calls == ["what will Scherzer make?", "2026"]
+
+
+def test_follow_up_question_continues_on_same_agent():
+    agent = FakeAgent(
+        [
+            OrchestratorTurn(message="Scherzer will make $5M in 2026.", done=True),
+            OrchestratorTurn(message="Because of his age and injury history.", done=True),
+        ]
+    )
+    replies = iter(["why so low?", ""])
+    turns = run_conversation(
+        "what will Scherzer make in 2026?", agent=agent, ask_fn=lambda _: next(replies)
+    )
+    assert len(turns) == 2
+    assert turns[0]["done"] is True
+    assert turns[1]["done"] is True
+    # the follow-up was fed back in as the next call on the same persistent agent
+    assert agent.calls == ["what will Scherzer make in 2026?", "why so low?"]
+
+
+def test_exit_word_other_than_blank_also_ends_conversation():
+    agent = FakeAgent([OrchestratorTurn(message="Scherzer will make $5M in 2026.", done=True)])
+    turns = run_conversation(
+        "what will Scherzer make in 2026?", agent=agent, ask_fn=lambda _: "no thanks"
+    )
+    assert len(turns) == 1
+    assert len(agent.calls) == 1
 
 
 def test_gives_up_after_max_turns():

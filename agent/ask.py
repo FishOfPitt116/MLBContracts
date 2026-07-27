@@ -1,5 +1,10 @@
 """Natural-language front door for the contract prediction agent.
 
+Starts a conversation, not a single Q&A: after the orchestrator answers, it
+stays open for follow-ups (e.g. "why so low?", "what about 2027 instead?") on
+the same agent, with the full exchange still in context. Press Enter at any
+"Anything else?" prompt to end the conversation.
+
 Usage:
     python -m agent.ask "give me the projected contract for Max Scherzer in 2026"
     python -m agent.ask    # prompts interactively if no request is given
@@ -11,6 +16,12 @@ from argparse import ArgumentParser
 from agent.config import DEFAULT_MODEL_ID
 from agent.orchestrator.agent import run_conversation
 from agent.trace import new_run_id, write_conversation_trace
+
+INTRO_TEXT = """MLB Contract Prediction Assistant
+Ask what a player's contract looks like for a pre-arbitration, arbitration, or free-agent year \
+— e.g. "what will Corbin Burnes make in 2026?" or "what would Julio Rodriguez get in free agency \
+right now?" I'll ask a clarifying question if I need more (like which year). After an answer, ask \
+follow-ups or press Enter to end the conversation."""
 
 
 def _extract_prediction_trace_path(messages):
@@ -54,7 +65,11 @@ def main():
     parser.add_argument("--model", default=DEFAULT_MODEL_ID, help="OpenAI model id")
     args = parser.parse_args()
 
-    request = args.request or input("What would you like to know? ")
+    if args.request:
+        request = args.request
+    else:
+        print(INTRO_TEXT)
+        request = input("> ")
     if not request.strip():
         sys.exit("A request is required.")
 
