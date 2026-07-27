@@ -60,24 +60,35 @@ Per-tier performance vs. ±10% tolerance target (95% threshold):
 
 The overall MAE (~$900K) is solid, but the ±10% per-tier targets are not met. The large errors come from predictable-but-unmodeled categories: elite closer premiums, injury discounts, and bounce-back contracts.
 
-### Agent-Based Prediction, Phase 0 (`agent/`) — **merged to main, July 2026**
+### Agent-Based Prediction, Phase 0 + Phase 2 comparables (`agent/`) — **merged to main, July 2026**
 
-The project direction shifted from sklearn models to an LLM agent that predicts contracts across all three phases (see `docs/agent/DESIGN.md`). Phase 0 is deliberately tool-less — the LLM (Strands SDK + OpenAI `gpt-5-mini`) predicts from its own knowledge — and establishes the architecture later phases build on:
+The project direction shifted from sklearn models to an LLM agent that predicts contracts across all three phases (see `docs/agent/DESIGN.md`). Phase 0 was deliberately tool-less — the LLM (Strands SDK + OpenAI `gpt-5-mini`) predicted from its own knowledge — and established the architecture later phases build on. Phase 2 has since added the agent's first tool:
 
 - **Citations from day one**: structured output requires a citation (claim + basis) per material figure; schema is forward-compatible with tool-sourced citations
 - **Deterministic phase resolution** (`agent/phase.py`): pre-arb/arb/FA resolved from Spotrac contract history, never by the LLM (super-two is a known caveat)
 - **Reproducibility**: every run persists a full trace JSON (`predictions/traces/`) and an append-only `predictions/history.csv` row, so projections fluctuate visibly across runs
-- **Harness**: `make predict PLAYER=... YEAR=...` (direct flags), `make ask REQUEST="..."` (natural-language front door, Phase 1), `make backtest-agent`, `make test-agent` (71 offline tests)
+- **Harness**: `make predict PLAYER=... YEAR=...` (direct flags), `make ask REQUEST="..."` (natural-language front door, Phase 1), `make backtest-agent`, `make test-agent` (97 offline tests)
+- **`query_comparable_contracts`** (`agent/predict/comparables.py`, Phase 2): grounds comparable-contract facts and a player's own contract history in real records instead of memory — see `docs/agent/DESIGN.md`'s Phase 2 entry for the full design, including a real backtest-discovered no-lookahead leak (the tool could return the target player's own real contract for the very year being predicted, since backtest targets are historical rows in the same CSV the tool reads) and its fix (a hard `year < target_year` cutoff baked into the tool per-prediction, invisible to and un-overridable by the model).
 
-**Official Phase 0 baseline** (July 27, 2026 — first complete, non-degenerate seeded backtest: `--n-per-phase 5 --seed 42`, model `gpt-5-mini`, `predictions/backtests/backtest_20260727T221344Z.json`; supersedes the earlier 13-prediction partial run):
+**Phase 0 baseline** (July 27, 2026, pre-comparables-tool — first complete, non-degenerate seeded backtest: `--n-per-phase 5 --seed 42`, model `gpt-5-mini`, `predictions/backtests/backtest_20260727T221344Z.json`; supersedes the earlier 13-prediction partial run):
 
-| Phase | n | MAE | R² | % within tolerance | Notes |
+| Phase | n | MAE | R² | % within tolerance |
+|-------|---|-----|----|---------------------|
+| pre-arb | 5 | $0.006M | 0.923 | 100% (±$0.25M) |
+| arb | 5 | $1.655M | 0.452 | 40% (±$1.0M) |
+| free-agent | 5 | $2.130M | 0.874 | 20% (±20%, relative) |
+
+**Phase 2 baseline** (July 27, 2026, comparables tool + no-lookahead fix — same seed/sample/model, `predictions/backtests/backtest_20260727T231718Z.json`):
+
+| Phase | n | MAE | R² | % within tolerance | vs. Phase 0 |
 |-------|---|-----|----|---------------------|-------|
-| pre-arb | 5 | $0.006M | 0.923 | 100% (±$0.25M) | Matches the archived Ridge model's ~$0.04M — minimums are memorizable |
-| arb | 5 | $1.655M | 0.452 | 40% (±$1.0M) | Noisy; individual misses 13-38% — small sample, high run-to-run variance at `reasoning_effort="low"` |
-| free-agent | 5 | $2.130M | 0.874 | 20% (±20%, relative) | Systematic under-prediction (4 of 5 below actual, 15-73% low) — tolerance is relative, not a flat $ band, after a flat $5M band was found to mask this |
+| pre-arb | 5 | $0.009M | 0.827 | 100% (±$0.25M) | flat — already near-perfectly memorized, comparables add little |
+| arb | 5 | $1.295M | 0.594 | **60%** (±$1.0M) | improved — biggest tolerance-pass jump (40%→60%) |
+| free-agent | 5 | $1.870M | 0.894 | 20% (±20%, relative) | modestly improved MAE/R², tolerance-pass rate unchanged |
 
-**Caveats**: (1) Phase 0 backtests are training-data-contaminated (the LLM memorized many historical outcomes), so these numbers measure recall as much as prediction — the honest test is `predictions/history.csv` entries for genuinely future seasons, scored once actuals land. (2) `n=5`/phase is small; treat these as directional, not precise, and expect meaningful swings run to run (a same-seed re-run before this one had arb MAE $0.905M/60% and free-agent MAE $2.58M — same sampled contracts, different LLM guesses). The free-agent under-prediction pattern (and the Skubal-style post-cutoff misses, e.g. predicted $10M for 2026 vs. actual $32M in earlier runs) is the gap the Phase 2 stats tool targets.
+A genuine but modest improvement, concentrated in arb — grounding comparable-contract *facts* helps somewhat, but doesn't fix blindness to current-season performance (Richards 54% low, Andrus 58% low in this run — still real misses). That gap is what the Phase 2 stats tool (not yet built) targets next.
+
+**Caveats**: (1) Phase 0 backtests are training-data-contaminated (the LLM memorized many historical outcomes), so these numbers measure recall as much as prediction — the honest test is `predictions/history.csv` entries for genuinely future seasons, scored once actuals land. (2) `n=5`/phase is small; treat these as directional, not precise, and expect meaningful swings run to run (an earlier same-seed Phase 0 re-run had arb at 60%/free-agent MAE $2.58M — same sampled contracts, different LLM guesses, before any tool existed). The free-agent under-prediction pattern (and the Skubal-style post-cutoff misses, e.g. predicted $10M for 2026 vs. actual $32M in earlier runs) is the gap the Phase 2 stats tool targets.
 
 ### GitHub Actions Workflow
 
@@ -148,7 +159,7 @@ In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
 2. **Finish the Phase 0 baseline** — **done** (July 27, 2026). A complete, non-degenerate seeded backtest is recorded above in section 2 (the first run was cut short at 13 predictions and had a schema gap that let a degenerate 0/0 prediction slip through; both are fixed now). Later phases compare against this.
 
-3. **Agent Phase 2** — Live data sourcing: MLB Stats API tool for stats (closes the post-knowledge-cutoff misses like the $10M-vs-$32M Skubal case); contract-data and player-identity live sourcing scoped separately (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced).
+3. **Agent Phase 2** — Live data sourcing. **Comparable contracts — done** (July 27, 2026): `query_comparable_contracts` grounds comparable-contract facts and a player's own history in real records; see section 2 above for the baseline comparison and the no-lookahead fix. **Still open**: MLB Stats API tool for stats (closes the post-knowledge-cutoff misses like the $10M-vs-$32M Skubal case); contract-data and player-identity live sourcing scoped separately (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced).
 
 4. **Agent Phase 3** — Multi-year forecasting: target-year ranges and user-supplied stat/context assumptions.
 
