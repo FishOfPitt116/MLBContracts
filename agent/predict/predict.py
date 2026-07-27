@@ -114,7 +114,7 @@ def run_prediction(player_row, year, model_id, quiet=False, resolution=None, for
             target_year=year,
             phase_resolution=resolution,
         )
-        prediction, messages, usage, latency = predict_contract(user_prompt, model_id)
+        prediction, messages, usage, latency = predict_contract(user_prompt, year, model_id)
 
     run_id = new_run_id(player_id)
     trace_path = write_trace(

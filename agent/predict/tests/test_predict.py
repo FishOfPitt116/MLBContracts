@@ -91,8 +91,8 @@ class TestRunPredictionShortcut:
     def test_force_predict_calls_the_llm_anyway(self, tmp_path, monkeypatch):
         calls = []
 
-        def fake_predict_contract(user_prompt, model_id):
-            calls.append(user_prompt)
+        def fake_predict_contract(user_prompt, target_year, model_id):
+            calls.append((user_prompt, target_year))
             from agent.predict.tests.test_schema import make_prediction
 
             return make_prediction(), [], {"totalTokens": 1}, 0.01
@@ -110,13 +110,14 @@ class TestRunPredictionShortcut:
             force_predict=True,
         )
         assert len(calls) == 1
+        assert calls[0][1] == 2016  # target_year threaded through correctly
         assert prediction.aav_millions == 10.0  # from make_prediction(), not the known $30M
 
     def test_calls_the_llm_when_nothing_is_known(self, tmp_path, monkeypatch):
         calls = []
 
-        def fake_predict_contract(user_prompt, model_id):
-            calls.append(user_prompt)
+        def fake_predict_contract(user_prompt, target_year, model_id):
+            calls.append((user_prompt, target_year))
             from agent.predict.tests.test_schema import make_prediction
 
             return make_prediction(), [], {"totalTokens": 1}, 0.01
@@ -129,3 +130,4 @@ class TestRunPredictionShortcut:
             _player_row(), 2026, "gpt-5-mini", quiet=True, resolution=_projected_resolution()
         )
         assert len(calls) == 1
+        assert calls[0][1] == 2026  # target_year threaded through correctly

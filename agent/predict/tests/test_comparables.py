@@ -8,7 +8,7 @@ injected directly into _query_comparable_contracts (the pure function the
 import pandas as pd
 import pytest
 
-from agent.predict.comparables import _query_comparable_contracts
+from agent.predict.comparables import _query_comparable_contracts, make_comparable_contracts_tool
 
 CONTRACT_COLUMNS = ["contract_id", "player_id", "age", "service_time", "year", "duration", "value", "type"]
 PLAYER_COLUMNS = ["player_id", "fangraphs_id", "first_name", "last_name", "position", "spotrac_link"]
@@ -155,3 +155,58 @@ def test_unknown_player_in_contracts_but_missing_from_players_df_does_not_crash(
     result = _query_comparable_contracts(orphan_contracts, _players_fixture(), player_id="Ghost_9")
     assert result["matches"][0]["player_name"] is None
     assert result["matches"][0]["position"] is None
+
+
+class TestNoLookahead:
+    """Regression coverage for the backtest leak: player_id="Skubal_1" with no year
+    filter used to return the target player's OWN target-year contract -- the exact
+    answer -- since backtest targets are drawn from already-observed rows in the
+    same CSV the tool reads. before_year fixes this; these tests prove it holds."""
+
+    def test_before_year_excludes_the_target_players_own_target_year_contract(self):
+        # This is the exact leak: querying Skubal's own history used to return his
+        # real 2026 contract when 2026 was the very year being predicted.
+        result = _query_comparable_contracts(
+            _contracts_fixture(), _players_fixture(), player_id="Skubal_1", before_year=2026
+        )
+        assert [m["contract_id"] for m in result["matches"]] == ["Skubal_1_2024"]
+
+    def test_before_year_excludes_other_players_contracts_from_that_year_too(self):
+        # Not just the target player -- ANY contract dated the target year or later
+        # is anachronistic evidence for a genuine forecast and must be excluded.
+        result = _query_comparable_contracts(
+            _contracts_fixture(), _players_fixture(), before_year=2025
+        )
+        years = {m["year"] for m in result["matches"]}
+        assert max(years) < 2025
+        assert "Skubal_1_2026" not in {m["contract_id"] for m in result["matches"]}
+        assert "Gore_4_2025" not in {m["contract_id"] for m in result["matches"]}
+
+    def test_before_year_none_means_no_cutoff(self):
+        # Only true for direct pure-function calls in tests -- real callers always
+        # go through make_comparable_contracts_tool(), which always supplies it.
+        result = _query_comparable_contracts(_contracts_fixture(), _players_fixture())
+        assert result["n_matches_before_limit"] == 5
+
+    def test_tool_schema_never_exposes_before_year_to_the_model(self):
+        # The model must have no parameter through which to see or override the
+        # cutoff -- it's a closure variable, not a tool argument.
+        tool = make_comparable_contracts_tool(before_year=2026)
+        exposed_params = set(tool.tool_spec["inputSchema"]["json"]["properties"].keys())
+        assert "before_year" not in exposed_params
+        assert exposed_params == {
+            "player_id", "position", "phase", "min_age", "max_age",
+            "min_service_time", "max_service_time", "min_year", "max_year",
+            "exclude_player_id", "limit",
+        }
+
+    def test_tool_factory_produces_a_working_cutoff(self, monkeypatch):
+        monkeypatch.setattr(
+            "agent.predict.comparables._load_contracts", _contracts_fixture
+        )
+        monkeypatch.setattr(
+            "agent.predict.comparables._load_players", _players_fixture
+        )
+        tool = make_comparable_contracts_tool(before_year=2026)
+        result = tool(player_id="Skubal_1")
+        assert [m["contract_id"] for m in result["matches"]] == ["Skubal_1_2024"]

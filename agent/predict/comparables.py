@@ -8,6 +8,16 @@ memory. Deliberately NOT backed by the stats-joined dataset: stat-line
 comparability (WAR, HR, ERA, etc.) is a later Phase 2 tool once there's an
 actual live/verified stats source wired in, not this one.
 
+NO LOOKAHEAD: every prediction gets its own tool instance (make_comparable_contracts_tool),
+built with the target year baked in and hard-excluding any contract dated that year or
+later -- from ANY player, not just the target one. Discovered via a backtest run that
+scored a perfect (fabricated) 100%: query_comparable_contracts(player_id=<target>) with no
+year filter returns a player's full history, including the exact contract being predicted,
+since backtest targets are drawn from already-observed rows in the same CSV the tool reads.
+The model wasn't predicting, it was reading the answer out of its own tool call. The cutoff
+is enforced in the tool itself, baked in via a per-prediction closure, not a caller-supplied
+filter -- the model is never given a parameter that could bypass it.
+
 KNOWN DATASET ISSUE (tracked in docs/PROJECT_STATE.md's Open Issues): Spotrac
 never records service_time for free-agent rows -- 100% of them carry the -1
 "not tracked" sentinel, not just some (pre-arb/arb are fine: 99.3%/93.8% of
@@ -56,6 +66,7 @@ def _query_comparable_contracts(
     max_year=None,
     exclude_player_id="",
     limit=15,
+    before_year=None,
 ):
     """Pure filtering logic, injectable dataframes for testing.
 
@@ -64,6 +75,12 @@ def _query_comparable_contracts(
     service_time bound is a self-contradictory request (raises ValueError,
     not a silent empty result) since it can never match anything; service_time
     bounds without an explicit free-agent phase just exclude untracked rows.
+
+    before_year: hard cutoff (year < before_year) applied unconditionally,
+    on top of whatever the caller's own min_year/max_year say -- the
+    no-lookahead guard described in the module docstring. None here means
+    "no cutoff," used only by tests; real callers always go through
+    make_comparable_contracts_tool(), which always supplies it.
     """
     has_service_time_bound = min_service_time is not None or max_service_time is not None
     if phase == "free-agent" and has_service_time_bound:
@@ -85,6 +102,8 @@ def _query_comparable_contracts(
     )
 
     mask = pd.Series(True, index=df.index)
+    if before_year is not None:
+        mask &= df["year"] < before_year
     if player_id:
         mask &= df["player_id"] == player_id
     if exclude_player_id:
@@ -145,78 +164,95 @@ def _query_comparable_contracts(
     return {"matches": records, "n_matches_before_limit": total_before_limit}
 
 
-@tool
-def query_comparable_contracts(
-    player_id: str = "",
-    position: str = "",
-    phase: str = "",
-    min_age: Optional[float] = None,
-    max_age: Optional[float] = None,
-    min_service_time: Optional[float] = None,
-    max_service_time: Optional[float] = None,
-    min_year: Optional[int] = None,
-    max_year: Optional[int] = None,
-    exclude_player_id: str = "",
-    limit: int = 15,
-) -> dict:
-    """Search real historical MLB contracts, filtered on whichever fields you give.
+def make_comparable_contracts_tool(before_year):
+    """Build a query_comparable_contracts tool scoped to one prediction's no-lookahead cutoff.
 
-    Use this for TWO things, both required rather than relied on from memory:
-    1. The target player's OWN contract history: pass player_id alone (or with a
-       year range) to see their actual past deals before projecting the next one.
-    2. Comparable OTHER players' contracts: filter by position/phase/age/service
-       time (and pass exclude_player_id=the target player's id so they don't show
-       up as their own comparable) to ground a projection in real market data
-       instead of guessing at what similar players got paid.
-
-    Not covered here: performance/stat-line comparability (WAR, HR, ERA, etc.) --
-    no stats data source is wired into this tool yet, so that judgment still
-    relies on your own knowledge for now, per the system prompt.
-
-    Args:
-        player_id: Exact player_id (e.g. "Skubal_26337"). Sole filter for "this
-            player's own history"; combine with min_year/max_year to narrow it.
-        position: Substring match against the position field (e.g. "SP" also
-            matches "SP/SP2"; "1B" also matches "1B/3B"). Case-insensitive.
-        phase: Exact match: "pre-arb", "arb", or "free-agent".
-        min_age / max_age: Player's age in the contract year (inclusive bounds).
-        min_service_time / max_service_time: NORMALIZED MLB service time (e.g. 2.5
-            = 2 years plus half of a third), NOT raw years.days format. ONLY
-            MEANINGFUL FOR pre-arb/arb — Spotrac never tracks service time for
-            free agents. Combining either bound with phase="free-agent" RAISES
-            AN ERROR (it can never match anything, so this is treated as an
-            invalid request, not a silent empty result) — use age/position/phase
-            instead when searching free-agent comparables. Without an explicit
-            phase="free-agent", a service_time bound just excludes untracked rows.
-        min_year / max_year: Contract signing year (inclusive bounds). Dollar
-            values are era-relative -- a $10M deal in 2012 is not the same market
-            as $10M in 2025, so prefer comparing within a similar year range, or
-            explicitly account for era in your reasoning if you don't.
-        exclude_player_id: Drop this player_id from results (typically the target
-            player, when searching for comparable OTHER players).
-        limit: Max rows to return (default 15) -- this is grounding evidence for
-            one prediction, not a full data dump; keep it small and relevant.
-
-    Returns:
-        {"matches": [{contract_id, player_id, player_name, position, age,
-         service_time, year, duration_years, value_millions, aav_millions,
-         phase}, ...], "n_matches_before_limit": int}. n_matches_before_limit
-        shows whether `limit` actually truncated anything. Raises an error
-        instead of returning if phase="free-agent" is combined with a
-        service_time bound (see min_service_time above).
+    before_year is baked into the closure, NOT exposed as a parameter the model
+    can set or see -- every prediction (agent/predict/predictor.py:create_agent)
+    builds its own tool instance via this factory with the target year, so the
+    cutoff can't be bypassed, only every match filtered by it. See the module
+    docstring's NO LOOKAHEAD note for why this exists.
     """
-    return _query_comparable_contracts(
-        _load_contracts(),
-        _load_players(),
-        player_id=player_id,
-        position=position,
-        phase=phase,
-        min_age=min_age,
-        max_age=max_age,
-        min_service_time=min_service_time,
-        max_service_time=max_service_time,
-        min_year=min_year,
-        max_year=max_year,
-        exclude_player_id=exclude_player_id,
-        limit=limit,
-    )
+
+    @tool
+    def query_comparable_contracts(
+        player_id: str = "",
+        position: str = "",
+        phase: str = "",
+        min_age: Optional[float] = None,
+        max_age: Optional[float] = None,
+        min_service_time: Optional[float] = None,
+        max_service_time: Optional[float] = None,
+        min_year: Optional[int] = None,
+        max_year: Optional[int] = None,
+        exclude_player_id: str = "",
+        limit: int = 15,
+    ) -> dict:
+        """Search real historical MLB contracts, filtered on whichever fields you give.
+
+        Use this for TWO things, both required rather than relied on from memory:
+        1. The target player's OWN contract history: pass player_id alone (or with a
+           year range) to see their actual past deals before projecting the next one.
+        2. Comparable OTHER players' contracts: filter by position/phase/age/service
+           time (and pass exclude_player_id=the target player's id so they don't show
+           up as their own comparable) to ground a projection in real market data
+           instead of guessing at what similar players got paid.
+
+        Every result is already restricted to contracts signed before the season
+        you're predicting -- you cannot see this season's or any future season's
+        deals for ANY player through this tool, by design.
+
+        Not covered here: performance/stat-line comparability (WAR, HR, ERA, etc.) --
+        no stats data source is wired into this tool yet, so that judgment still
+        relies on your own knowledge for now, per the system prompt.
+
+        Args:
+            player_id: Exact player_id (e.g. "Skubal_26337"). Sole filter for "this
+                player's own history"; combine with min_year/max_year to narrow it.
+            position: Substring match against the position field (e.g. "SP" also
+                matches "SP/SP2"; "1B" also matches "1B/3B"). Case-insensitive.
+            phase: Exact match: "pre-arb", "arb", or "free-agent".
+            min_age / max_age: Player's age in the contract year (inclusive bounds).
+            min_service_time / max_service_time: NORMALIZED MLB service time (e.g. 2.5
+                = 2 years plus half of a third), NOT raw years.days format. ONLY
+                MEANINGFUL FOR pre-arb/arb — Spotrac never tracks service time for
+                free agents. Combining either bound with phase="free-agent" RAISES
+                AN ERROR (it can never match anything, so this is treated as an
+                invalid request, not a silent empty result) — use age/position/phase
+                instead when searching free-agent comparables. Without an explicit
+                phase="free-agent", a service_time bound just excludes untracked rows.
+            min_year / max_year: Contract signing year (inclusive bounds). Dollar
+                values are era-relative -- a $10M deal in 2012 is not the same market
+                as $10M in 2025, so prefer comparing within a similar year range, or
+                explicitly account for era in your reasoning if you don't.
+            exclude_player_id: Drop this player_id from results (typically the target
+                player, when searching for comparable OTHER players).
+            limit: Max rows to return (default 15) -- this is grounding evidence for
+                one prediction, not a full data dump; keep it small and relevant.
+
+        Returns:
+            {"matches": [{contract_id, player_id, player_name, position, age,
+             service_time, year, duration_years, value_millions, aav_millions,
+             phase}, ...], "n_matches_before_limit": int}. n_matches_before_limit
+            shows whether `limit` actually truncated anything. Raises an error
+            instead of returning if phase="free-agent" is combined with a
+            service_time bound (see min_service_time above).
+        """
+        return _query_comparable_contracts(
+            _load_contracts(),
+            _load_players(),
+            player_id=player_id,
+            position=position,
+            phase=phase,
+            min_age=min_age,
+            max_age=max_age,
+            min_service_time=min_service_time,
+            max_service_time=max_service_time,
+            min_year=min_year,
+            max_year=max_year,
+            exclude_player_id=exclude_player_id,
+            limit=limit,
+            before_year=before_year,
+        )
+
+    return query_comparable_contracts
