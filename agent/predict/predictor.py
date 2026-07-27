@@ -12,6 +12,7 @@ import time
 from agent.config import DEFAULT_MODEL_ID, model_params
 from agent.predict.prompts import SYSTEM_PROMPT
 from agent.predict.schema import ContractPrediction
+from agent.tool_logging import ToolCallLogger
 
 # One retry on structured-output failure before giving up
 MAX_ATTEMPTS = 2
@@ -42,7 +43,7 @@ def create_agent(model_id=None):
 
     model_id = model_id or DEFAULT_MODEL_ID
     model = OpenAIModel(model_id=model_id, params=model_params(model_id))
-    return Agent(model=model, system_prompt=SYSTEM_PROMPT)
+    return Agent(model=model, system_prompt=SYSTEM_PROMPT, hooks=[ToolCallLogger()])
 
 
 def predict_contract(user_prompt, model_id=None):

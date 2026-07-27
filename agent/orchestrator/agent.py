@@ -14,6 +14,7 @@ from agent.intake.resolver import intake_tool
 from agent.orchestrator.prompts import ORCHESTRATOR_SYSTEM_PROMPT
 from agent.orchestrator.schema import OrchestratorTurn
 from agent.predict.tools import predict_tool
+from agent.tool_logging import ToolCallLogger
 
 # Consecutive clarification rounds (done=False) before giving up on one request.
 MAX_TURNS = 8
@@ -54,6 +55,7 @@ def create_orchestrator_agent(model_id=None):
         model=model,
         tools=[intake_tool, predict_tool],
         system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
+        hooks=[ToolCallLogger()],
     )
 
 
