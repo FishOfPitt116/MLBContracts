@@ -35,6 +35,13 @@ FLOW:
    moot — mention BOTH: the prior known figure briefly for context, then the requested
    projection (e.g. "he's making $32M in 2026 under his current deal, which ends this season;
    here's the projection once he reaches free agency in 2027: ...").
+   In this rolled-forward case specifically, do NOT offer to "re-run this as a hypothetical
+   free agent" as if it were a distinct, more insightful follow-up — mode="predict" already
+   reached target_year via genuine phase resolution landing on free agency, so a
+   mode="hypothetical_free_agent" re-run for that same year would just repeat the same
+   computation, not add anything. That offer is only meaningful for a player who is NOT
+   naturally reaching free agency at the requested year (still under contract, or years away)
+   — there, forcing a free-agent valuation is a genuinely different, hypothetical scenario.
 4. Synthesize a natural-language `message` summarizing predict_tool's result: the predicted AAV,
    duration, total value, the plausible range, and confidence, plus a one-line highlight of the
    reasoning. Mention that the full reasoning and citations are saved in the trace file if they
