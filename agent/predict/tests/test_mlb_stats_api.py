@@ -5,6 +5,8 @@ can be exercised deterministically; time.sleep is monkeypatched to a no-op so
 these run instantly despite testing exponential backoff timing.
 """
 
+import types
+
 import requests
 import pytest
 
@@ -127,6 +129,16 @@ class TestCoerce:
         assert api._coerce(None) is None
 
 
+class _FixedDatetime:
+    """Stand-in for the datetime class, so tests control "now" deterministically."""
+
+    def __init__(self, year):
+        self._year = year
+
+    def now(self):
+        return types.SimpleNamespace(year=self._year)
+
+
 class TestFetchYearByYear:
     def _splits(self, years):
         return {
@@ -165,6 +177,39 @@ class TestFetchYearByYear:
         monkeypatch.setattr(api, "_get_json", lambda url, params: {"stats": []})
         rows = api._fetch_year_by_year(1, "hitting", api.BATTING_FIELDS, before_year=None, min_year=None, max_year=None)
         assert rows == []
+
+
+class TestSeasonStatus:
+    """Regression coverage: a model once read a mid-season partial total (e.g.
+    90 IP through 15 starts) as a "workload dip" vs. a complete ~190 IP season,
+    and used that false durability concern to justify a cheaper contract.
+    season_status lets the model tell these apart instead of guessing."""
+
+    def _splits(self, years):
+        return {
+            "stats": [
+                {
+                    "splits": [
+                        {"season": str(year), "team": {"name": "Team"}, "stat": {"gamesPlayed": year}}
+                        for year in years
+                    ]
+                }
+            ]
+        }
+
+    def test_real_current_year_marked_in_progress(self, monkeypatch):
+        monkeypatch.setattr(api, "datetime", _FixedDatetime(2026))
+        monkeypatch.setattr(api, "_get_json", lambda url, params: self._splits([2024, 2025, 2026]))
+        # before_year=2027 (predicting a future season) lets 2026 through the cutoff.
+        rows = api._fetch_year_by_year(1, "pitching", api.PITCHING_FIELDS, before_year=2027, min_year=None, max_year=None)
+        by_year = {r["year"]: r["season_status"] for r in rows}
+        assert by_year == {2024: "complete", 2025: "complete", 2026: "in_progress"}
+
+    def test_no_season_matches_real_current_year_all_complete(self, monkeypatch):
+        monkeypatch.setattr(api, "datetime", _FixedDatetime(2030))
+        monkeypatch.setattr(api, "_get_json", lambda url, params: self._splits([2024, 2025]))
+        rows = api._fetch_year_by_year(1, "pitching", api.PITCHING_FIELDS, before_year=None, min_year=None, max_year=None)
+        assert all(r["season_status"] == "complete" for r in rows)
 
 
 class TestQueryStats:

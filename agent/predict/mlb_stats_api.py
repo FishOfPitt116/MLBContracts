@@ -39,6 +39,7 @@ same principle as the free-agent+service_time guard in comparables.py.
 """
 
 import time
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -106,6 +107,15 @@ def _coerce(value):
 
 
 def _fetch_year_by_year(mlbam_id, group, fields, before_year, min_year, max_year):
+    # A season matching the real current calendar year is still being played --
+    # its counting stats (IP, PA, HR, ...) are a partial total, not a full-season
+    # decline, and must not be compared directly against a completed season's.
+    # Discovered live: a model read a mid-season "90 IP, 15 GS" line as a
+    # "workload dip" vs. a full 190+ IP season and used that false durability
+    # concern to justify a cheaper contract. Rate stats (ERA, WHIP, K/9, AVG,
+    # OPS, ...) don't have this problem -- they're already normalized.
+    current_season = datetime.now().year
+
     data = _get_json(
         f"{STATS_API_BASE}/people/{mlbam_id}/stats",
         params={"stats": "yearByYear", "group": group},
@@ -124,7 +134,11 @@ def _fetch_year_by_year(mlbam_id, group, fields, before_year, min_year, max_year
         if max_year is not None and year > max_year:
             continue
         stat = split.get("stat", {})
-        row = {"year": year, "team": (split.get("team") or {}).get("name")}
+        row = {
+            "year": year,
+            "team": (split.get("team") or {}).get("name"),
+            "season_status": "in_progress" if year == current_season else "complete",
+        }
         for field in fields:
             row[field] = _coerce(stat.get(field))
         rows.append(row)
@@ -175,7 +189,17 @@ def make_batting_stats_tool(before_year):
 
         Every result is already restricted to seasons before the one you're
         predicting -- you cannot see this season's or any future season's
-        stats for ANY player through this tool, by design.
+        stats for ANY player through this tool, by design. That said, when
+        predicting a future season, the real current season CAN show up here
+        (it's before the target) with season_status="in_progress" -- its
+        counting stats (gamesPlayed, atBats, homeRuns, rbi, ...) are a
+        PARTIAL total so far this year, not a full-season number. Never
+        compare an in_progress season's counting stats directly against a
+        complete season's, and never describe a partial total as a decline
+        or a "lighter workload" -- check games/PA against the player's own
+        complete seasons for what pace it implies before concluding anything
+        about durability or usage. Rate stats (avg, obp, slg, ops) don't have
+        this problem.
 
         Live data (statsapi.mlb.com), not a static dataset -- current-season
         numbers are real. Does NOT include WAR, wRC+, or Statcast rates
@@ -189,7 +213,8 @@ def make_batting_stats_tool(before_year):
             max_year: Latest season to include (inclusive).
 
         Returns:
-            {"stats": {player_id: [{year, team, gamesPlayed, plateAppearances,
+            {"stats": {player_id: [{year, team, season_status ("complete" or
+             "in_progress" -- see above), gamesPlayed, plateAppearances,
              atBats, hits, doubles, triples, homeRuns, runs, rbi, stolenBases,
              baseOnBalls, strikeOuts, avg, obp, slg, ops}, ...]}}. A player_id
             this tool can't map to a live MLB player id (no fangraphs_id on
@@ -226,7 +251,17 @@ def make_pitching_stats_tool(before_year):
 
         Every result is already restricted to seasons before the one you're
         predicting -- you cannot see this season's or any future season's
-        stats for ANY player through this tool, by design.
+        stats for ANY player through this tool, by design. That said, when
+        predicting a future season, the real current season CAN show up here
+        (it's before the target) with season_status="in_progress" -- its
+        counting stats (gamesStarted, inningsPitched, wins, strikeOuts, ...)
+        are a PARTIAL total so far this year, not a full-season number. Never
+        compare an in_progress season's counting stats directly against a
+        complete season's, and never describe a partial total as a decline
+        or a "lighter workload" -- check games/innings against the player's
+        own complete seasons for what pace it implies before concluding
+        anything about durability or usage. Rate stats (era, whip, K/9, BB/9)
+        don't have this problem.
 
         Live data (statsapi.mlb.com), not a static dataset -- current-season
         numbers are real. Does NOT include WAR, FIP, xFIP, or SIERA -- those
@@ -240,7 +275,8 @@ def make_pitching_stats_tool(before_year):
             max_year: Latest season to include (inclusive).
 
         Returns:
-            {"stats": {player_id: [{year, team, gamesPlayed, gamesStarted,
+            {"stats": {player_id: [{year, team, season_status ("complete" or
+             "in_progress" -- see above), gamesPlayed, gamesStarted,
              inningsPitched, wins, losses, saves, holds, strikeOuts,
              baseOnBalls, era, whip, strikeoutsPer9Inn, walksPer9Inn}, ...]}}.
             A player_id this tool can't map to a live MLB player id (no
