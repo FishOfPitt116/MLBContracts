@@ -1,16 +1,18 @@
-"""Prediction agent: structured output, now with its first Phase 2 tool.
+"""Prediction agent: structured output, now with Phase 2 tools.
 
-Phase 0 was deliberately tool-less; Phase 2 adds query_comparable_contracts
-(agent/predict/comparables.py) so comparable-contract reasoning is grounded in
-real records instead of training memory. Stat-line grounding is still Phase 0
-(model knowledge) until a stats data source is wired in as a later tool.
+Phase 0 was deliberately tool-less. Phase 2 adds, one category at a time:
+query_comparable_contracts (agent/predict/comparables.py) for comparable-
+contract facts and a player's own contract history; query_batting_stats /
+query_pitching_stats (agent/predict/mlb_stats_api.py, live statsapi.mlb.com
+calls) for performance grounding. Anything not yet covered by a tool still
+relies on model knowledge, same as Phase 0.
 
 A fresh Agent is created per prediction (unlike the review-queue agent, which
 reuses one agent across queue items) so conversation state never bleeds
 between players and each trace's messages describe exactly one run. Each
-fresh agent also gets its own comparable-contracts tool instance scoped to
-that prediction's target_year (see comparables.py's NO LOOKAHEAD note) --
-target_year is required here specifically so that cutoff can never be
+fresh agent also gets its own tool instances scoped to that prediction's
+target_year (see comparables.py's and mlb_stats_api.py's NO LOOKAHEAD notes)
+-- target_year is required here specifically so that cutoff can never be
 forgotten for a real prediction call.
 """
 
@@ -20,6 +22,7 @@ import time
 
 from agent.config import DEFAULT_MODEL_ID, model_params
 from agent.predict.comparables import make_comparable_contracts_tool
+from agent.predict.mlb_stats_api import make_batting_stats_tool, make_pitching_stats_tool
 from agent.predict.prompts import SYSTEM_PROMPT
 from agent.predict.schema import ContractPrediction
 from agent.tool_logging import ToolCallLogger
@@ -60,7 +63,11 @@ def create_agent(target_year, model_id=None):
     return Agent(
         model=model,
         system_prompt=SYSTEM_PROMPT,
-        tools=[make_comparable_contracts_tool(target_year)],
+        tools=[
+            make_comparable_contracts_tool(target_year),
+            make_batting_stats_tool(target_year),
+            make_pitching_stats_tool(target_year),
+        ],
         hooks=[ToolCallLogger()],
     )
 
