@@ -67,17 +67,17 @@ The project direction shifted from sklearn models to an LLM agent that predicts 
 - **Citations from day one**: structured output requires a citation (claim + basis) per material figure; schema is forward-compatible with tool-sourced citations
 - **Deterministic phase resolution** (`agent/phase.py`): pre-arb/arb/FA resolved from Spotrac contract history, never by the LLM (super-two is a known caveat)
 - **Reproducibility**: every run persists a full trace JSON (`predictions/traces/`) and an append-only `predictions/history.csv` row, so projections fluctuate visibly across runs
-- **Harness**: `make predict PLAYER=... YEAR=...` (direct flags), `make ask REQUEST="..."` (natural-language front door, Phase 1), `make backtest-agent`, `make test-agent` (41 offline tests)
+- **Harness**: `make predict PLAYER=... YEAR=...` (direct flags), `make ask REQUEST="..."` (natural-language front door, Phase 1), `make backtest-agent`, `make test-agent` (71 offline tests)
 
-Preliminary Phase 0 baseline (13 scored predictions, partial seeded backtest):
+**Official Phase 0 baseline** (July 27, 2026 — first complete, non-degenerate seeded backtest: `--n-per-phase 5 --seed 42`, model `gpt-5-mini`, `predictions/backtests/backtest_20260727T221344Z.json`; supersedes the earlier 13-prediction partial run):
 
-| Phase | n | MAE | Notes |
-|-------|---|-----|-------|
-| pre-arb | 6 | $0.052M | Near the archived Ridge model's $0.039M — minimums are memorizable |
-| arb | 6 | $4.95M | Dominated by post-knowledge-cutoff breakouts (predicted $10M for Skubal 2026; actual $32M) |
-| free-agent | 1 | $0.00M | Single run (Scherzer 2026) — no meaningful sample yet |
+| Phase | n | MAE | R² | % within tolerance | Notes |
+|-------|---|-----|----|---------------------|-------|
+| pre-arb | 5 | $0.006M | 0.923 | 100% (±$0.25M) | Matches the archived Ridge model's ~$0.04M — minimums are memorizable |
+| arb | 5 | $1.655M | 0.452 | 40% (±$1.0M) | Noisy; individual misses 13-38% — small sample, high run-to-run variance at `reasoning_effort="low"` |
+| free-agent | 5 | $2.130M | 0.874 | 20% (±20%, relative) | Systematic under-prediction (4 of 5 below actual, 15-73% low) — tolerance is relative, not a flat $ band, after a flat $5M band was found to mask this |
 
-**Caveat**: Phase 0 backtests are training-data-contaminated (the LLM memorized many historical outcomes), so these numbers measure recall as much as prediction. The Skubal-style misses are the gap the Phase 1 stats tool targets.
+**Caveats**: (1) Phase 0 backtests are training-data-contaminated (the LLM memorized many historical outcomes), so these numbers measure recall as much as prediction — the honest test is `predictions/history.csv` entries for genuinely future seasons, scored once actuals land. (2) `n=5`/phase is small; treat these as directional, not precise, and expect meaningful swings run to run (a same-seed re-run before this one had arb MAE $0.905M/60% and free-agent MAE $2.58M — same sampled contracts, different LLM guesses). The free-agent under-prediction pattern (and the Skubal-style post-cutoff misses, e.g. predicted $10M for 2026 vs. actual $32M in earlier runs) is the gap the Phase 2 stats tool targets.
 
 ### GitHub Actions Workflow
 
@@ -138,7 +138,7 @@ In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
 1. **Agent Phase 1** — Natural-language front door: **done** (July 2026). `agent/ask.py` / `make ask REQUEST="..."` resolves a free-text request via a three-tier orchestrator/intake/predict agent architecture (see `docs/agent/DESIGN.md` Design Decision #7), reporting ambiguity through natural-language clarifying questions instead of guessing. `hypothetical_free_agent` mode supports "what would they get in free agency right now." `make ask` is also now a genuine multi-turn conversation rather than one Q&A — the orchestrator stays open for follow-ups on the same persistent agent after delivering an answer. Contract-status routing is also done: intake attaches `known`/`forecast` status right after resolving player/year, so the orchestrator skips `predict_tool` (and the LLM) entirely for a year already covered by a signed contract, instead of "predicting" a number that's already public record.
 
-2. **Finish the Phase 0 baseline** — Complete a full seeded backtest (the first run was cut short at 13 predictions) and record the baseline to compare later phases against.
+2. **Finish the Phase 0 baseline** — **done** (July 27, 2026). A complete, non-degenerate seeded backtest is recorded above in section 2 (the first run was cut short at 13 predictions and had a schema gap that let a degenerate 0/0 prediction slip through; both are fixed now). Later phases compare against this.
 
 3. **Agent Phase 2** — Live data sourcing: MLB Stats API tool for stats (closes the post-knowledge-cutoff misses like the $10M-vs-$32M Skubal case); contract-data and player-identity live sourcing scoped separately (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced).
 
