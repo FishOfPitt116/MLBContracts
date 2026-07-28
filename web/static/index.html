@@ -2,25 +2,190 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLB Contract Prediction Chat</title>
 <style>
-  body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; }
-  #log { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; height: 60vh; overflow-y: auto; margin-bottom: 1rem; }
-  .msg { margin: 0.5rem 0; white-space: pre-wrap; }
-  .user { color: #0645ad; }
-  .assistant { color: #222; }
-  .user b, .assistant b { display: inline-block; min-width: 4.5rem; }
-  form { display: flex; gap: 0.5rem; }
-  input[type=text] { flex: 1; padding: 0.5rem; font-size: 1rem; }
-  button { padding: 0.5rem 1rem; font-size: 1rem; }
-  #status { color: #888; font-size: 0.9rem; margin-bottom: 0.5rem; min-height: 1.2em; }
+  :root {
+    --bg: #faf9f7;
+    --panel: #ffffff;
+    --text: #1b1d1e;
+    --text-muted: #6b7280;
+    --border: #e6e3dd;
+    --accent: #1f6f5c;
+    --assistant-bubble: #f0f1ef;
+    --assistant-text: #1b1d1e;
+    --user-bubble: var(--accent);
+    --user-text: #ffffff;
+    --error: #b3261e;
+    --error-bubble: #fbeae8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121416;
+      --panel: #17191b;
+      --text: #ecedee;
+      --text-muted: #9aa0a6;
+      --border: #2a2d2f;
+      --accent: #3fa98a;
+      --assistant-bubble: #23262a;
+      --assistant-text: #ecedee;
+      --user-bubble: var(--accent);
+      --user-text: #08130f;
+      --error: #ff8a80;
+      --error-bubble: #3a1f1d;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+
+  header {
+    padding: 1.1rem 1.5rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    margin: 0;
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  header p {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem 1rem;
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .row {
+    display: flex;
+    width: 100%;
+  }
+  .row.user { justify-content: flex-end; }
+  .row.assistant { justify-content: flex-start; }
+
+  .bubble {
+    max-width: 75%;
+    padding: 0.65rem 0.95rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .row.user .bubble {
+    background: var(--user-bubble);
+    color: var(--user-text);
+    border-radius: 18px 18px 4px 18px;
+  }
+  .row.assistant .bubble {
+    background: var(--assistant-bubble);
+    color: var(--assistant-text);
+    border-radius: 18px 18px 18px 4px;
+  }
+  .row.assistant .bubble.error {
+    background: var(--error-bubble);
+    color: var(--error);
+  }
+
+  /* Typing indicator: sits where the reply will land, phase caption above
+     three dots that bounce in sequence (iMessage-style). */
+  .typing-caption {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 0.3rem;
+    min-height: 1em;
+  }
+  .dots {
+    display: inline-flex;
+    gap: 0.28rem;
+    align-items: center;
+    height: 0.9rem;
+  }
+  .dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .dots span:nth-child(2) { animation-delay: 0.15s; }
+  .dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dots span { animation: none; opacity: 0.7; }
+  }
+
+  form {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  input[type=text] {
+    flex: 1;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+  }
+  input[type=text]:focus {
+    border-color: var(--accent);
+  }
+  button {
+    padding: 0.6rem 1.15rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 20px;
+    background: var(--accent);
+    color: var(--user-text);
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 </style>
 </head>
 <body>
-<h2>MLB Contract Prediction Chat</h2>
-<p>Ask about a player's projected or actual contract, e.g. "what will Corbin Burnes make in 2026?"</p>
+<header>
+  <h1>MLB Contract Prediction Chat</h1>
+  <p>Ask about a player's projected or actual contract, e.g. "what will Corbin Burnes make in 2026?"</p>
+</header>
 <div id="log"></div>
-<div id="status"></div>
 <form id="form">
   <input id="input" type="text" autocomplete="off" placeholder="Ask a question..." autofocus>
   <button type="submit">Send</button>
@@ -31,39 +196,56 @@
 // message already has a session_id to poll /api/status with.
 let sessionId = crypto.randomUUID();
 const log = document.getElementById("log");
-const status = document.getElementById("status");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
+const button = form.querySelector("button");
 
-function addMessage(role, text) {
-  const div = document.createElement("div");
-  div.className = "msg " + role;
-  div.innerHTML = "<b>" + (role === "user" ? "You" : "Assistant") + ":</b> " + text.replace(/</g, "&lt;");
-  log.appendChild(div);
+function addBubble(role, text) {
+  const row = document.createElement("div");
+  row.className = "row " + role;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  log.appendChild(row);
   log.scrollTop = log.scrollHeight;
+  return bubble;
+}
+
+function addTypingBubble() {
+  const row = document.createElement("div");
+  row.className = "row assistant";
+  row.innerHTML =
+    '<div class="bubble">' +
+    '  <span class="typing-caption">Thinking...</span>' +
+    '  <span class="dots"><span></span><span></span><span></span></span>' +
+    "</div>";
+  log.appendChild(row);
+  log.scrollTop = log.scrollHeight;
+  return row;
 }
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text) return;
-  addMessage("user", text);
+  addBubble("user", text);
   input.value = "";
   input.disabled = true;
-  status.textContent = "Thinking...";
+  button.disabled = true;
 
-  // Poll the phase-aware status endpoint while the chat request is in
-  // flight (intake_tool -> "Looking up player...", predict_tool -> "Making
-  // prediction...", anything else -> the "Thinking..." fallback).
+  const typingRow = addTypingBubble();
+  const caption = typingRow.querySelector(".typing-caption");
+
   const pollStatus = async () => {
     try {
       const resp = await fetch("/api/status?session_id=" + encodeURIComponent(sessionId));
       if (resp.ok) {
         const data = await resp.json();
-        status.textContent = data.status;
+        caption.textContent = data.status;
       }
     } catch (err) {
-      // Non-fatal -- the status line is a nicety, not required for the answer.
+      // Non-fatal -- the status caption is a nicety, not required for the answer.
     }
   };
   const statusInterval = setInterval(pollStatus, 400);
@@ -74,20 +256,22 @@ form.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, session_id: sessionId }),
     });
+    typingRow.remove();
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      addMessage("assistant", "Error: " + (err.detail || resp.statusText));
+      addBubble("assistant", "Error: " + (err.detail || resp.statusText)).classList.add("error");
       return;
     }
     const data = await resp.json();
     sessionId = data.session_id;
-    addMessage("assistant", data.message);
+    addBubble("assistant", data.message);
   } catch (err) {
-    addMessage("assistant", "Error: " + err);
+    typingRow.remove();
+    addBubble("assistant", "Error: " + err).classList.add("error");
   } finally {
     clearInterval(statusInterval);
-    status.textContent = "";
     input.disabled = false;
+    button.disabled = false;
     input.focus();
   }
 });
