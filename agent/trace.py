@@ -89,10 +89,30 @@ def append_history(
     actual_aav=None,
     history_csv=None,
 ):
-    """Append one prediction row to the history CSV (header written if new)."""
+    """Append one prediction row to the history CSV (header written if new).
+
+    Guards against a real corruption found live (July 2026): HISTORY_HEADERS
+    gained a column (no_contract) mid-project, but the header line is only
+    ever written once, when the file doesn't exist yet -- so an existing
+    file's stored header silently stopped matching the rows being appended
+    to it, and every downstream reader (e.g. web/history.py) misaligned
+    every field after the insertion point for every row written since. Loud
+    failure here beats another silent misalignment.
+    """
     history_csv = history_csv or HISTORY_CSV
     history_csv.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not history_csv.exists()
+    write_header = not history_csv.exists() or history_csv.stat().st_size == 0
+    if not write_header:
+        with open(history_csv, newline="") as file:
+            existing_header = next(csv.reader(file), [])
+        if existing_header != HISTORY_HEADERS:
+            raise RuntimeError(
+                f"{history_csv} header {existing_header} doesn't match current "
+                f"HISTORY_HEADERS {HISTORY_HEADERS} -- the schema changed after "
+                "this file was created. Migrate or delete it (it's derived/"
+                "gitignored) before appending, rather than silently misaligning "
+                "every row written from here on."
+            )
     with open(history_csv, mode="a", newline="") as file:
         writer = csv.writer(file)
         if write_header:
