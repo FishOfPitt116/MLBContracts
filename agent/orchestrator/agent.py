@@ -51,8 +51,13 @@ def _import_strands():
     return Agent, OpenAIModel
 
 
-def create_orchestrator_agent(model_id=None):
-    """Create the one persistent Agent for a conversation."""
+def create_orchestrator_agent(model_id=None, extra_hooks=None):
+    """Create the one persistent Agent for a conversation.
+
+    extra_hooks: additional HookProviders appended after the default
+    ToolCallLogger (e.g. web/status.py's StatusHook, for UI progress
+    reporting) -- optional, so the CLI's behavior is unchanged.
+    """
     Agent, OpenAIModel = _import_strands()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -65,7 +70,7 @@ def create_orchestrator_agent(model_id=None):
         model=model,
         tools=[intake_tool, predict_tool],
         system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
-        hooks=[ToolCallLogger()],
+        hooks=[ToolCallLogger(), *(extra_hooks or [])],
     )
 
 

@@ -34,6 +34,7 @@ from pydantic import BaseModel
 
 from agent.config import DEFAULT_MODEL_ID
 from agent.orchestrator.agent import get_turn
+from web.status import get_status, reset_status, StatusHook
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -67,20 +68,31 @@ def _get_or_create_agent(session_id):
     from agent.orchestrator.agent import create_orchestrator_agent
 
     new_id = session_id or str(uuid.uuid4())
-    _sessions[new_id] = create_orchestrator_agent(DEFAULT_MODEL_ID)
+    _sessions[new_id] = create_orchestrator_agent(
+        DEFAULT_MODEL_ID, extra_hooks=[StatusHook(new_id)]
+    )
     return new_id, _sessions[new_id]
 
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    # No-store: this is actively edited during local dev and a stale cached
+    # copy in the browser silently masks frontend changes (the dev server's
+    # --reload only restarts the backend, it can't refresh an open tab).
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     session_id, agent = _get_or_create_agent(req.session_id)
+    reset_status(session_id)
     turn = get_turn(agent, req.message)
     return ChatResponse(session_id=session_id, message=turn.message, done=turn.done)
+
+
+@app.get("/api/status")
+def status(session_id: str):
+    return {"status": get_status(session_id)}
 
 
 @app.post("/api/reset")

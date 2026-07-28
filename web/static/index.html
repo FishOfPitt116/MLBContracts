@@ -27,7 +27,9 @@
 </form>
 
 <script>
-let sessionId = null;
+// Generated once up front (not waited on from the server) so the very first
+// message already has a session_id to poll /api/status with.
+let sessionId = crypto.randomUUID();
 const log = document.getElementById("log");
 const status = document.getElementById("status");
 const form = document.getElementById("form");
@@ -50,6 +52,22 @@ form.addEventListener("submit", async (e) => {
   input.disabled = true;
   status.textContent = "Thinking...";
 
+  // Poll the phase-aware status endpoint while the chat request is in
+  // flight (intake_tool -> "Looking up player...", predict_tool -> "Making
+  // prediction...", anything else -> the "Thinking..." fallback).
+  const pollStatus = async () => {
+    try {
+      const resp = await fetch("/api/status?session_id=" + encodeURIComponent(sessionId));
+      if (resp.ok) {
+        const data = await resp.json();
+        status.textContent = data.status;
+      }
+    } catch (err) {
+      // Non-fatal -- the status line is a nicety, not required for the answer.
+    }
+  };
+  const statusInterval = setInterval(pollStatus, 400);
+
   try {
     const resp = await fetch("/api/chat", {
       method: "POST",
@@ -67,6 +85,7 @@ form.addEventListener("submit", async (e) => {
   } catch (err) {
     addMessage("assistant", "Error: " + err);
   } finally {
+    clearInterval(statusInterval);
     status.textContent = "";
     input.disabled = false;
     input.focus();
