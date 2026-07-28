@@ -573,6 +573,17 @@
     color: var(--text-muted);
   }
   .modal-body p { margin: 0; }
+  .modal-body p + p { margin-top: 0.6rem; }
+  .reasoning-list {
+    margin: 0.6rem 0 0;
+    padding-left: 1.15rem;
+  }
+  .reasoning-list li {
+    margin-bottom: 0.5rem;
+  }
+  .reasoning-list li:last-child {
+    margin-bottom: 0;
+  }
   .citation {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -762,6 +773,33 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// The model's reasoning is one long string with no real structure -- it
+// sometimes writes bullets inline as "... - Label: detail - Label: detail"
+// instead of line breaks, which renders as one dense wall of text otherwise.
+// Split on real newlines first (paragraphs), then on that inline-bullet
+// pattern within each paragraph, into an intro + a <ul>. Falls back to a
+// single paragraph untouched when neither pattern is present.
+function formatReasoningParagraph(text) {
+  const parts = text.split(/\s-\s(?=[A-Z][^:]{2,50}:\s)/);
+  const intro = parts[0].trim();
+  const bullets = parts.slice(1).map((s) => s.trim()).filter(Boolean);
+  let html = intro ? "<p>" + escapeHtml(intro) + "</p>" : "";
+  if (bullets.length) {
+    html += '<ul class="reasoning-list">' + bullets.map((b) => "<li>" + escapeHtml(b) + "</li>").join("") + "</ul>";
+  }
+  return html;
+}
+
+function formatReasoning(text) {
+  if (!text) return "";
+  return text
+    .split(/\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(formatReasoningParagraph)
+    .join("");
+}
+
 function closeModal() {
   modalBackdrop.classList.add("hidden");
   modalBody.innerHTML = "";
@@ -869,7 +907,7 @@ async function openTraceModal(p) {
       heroHtml +
       rangeHtml +
       '<div class="modal-section-title">Reasoning</div>' +
-      "<p>" + escapeHtml(out.reasoning || "") + "</p>" +
+      formatReasoning(out.reasoning) +
       notesHtml +
       arithmeticHtml +
       '<div class="modal-section-title">Citations (' + citations.length + ")</div>" +
