@@ -34,6 +34,7 @@ from pydantic import BaseModel
 
 from agent.config import DEFAULT_MODEL_ID
 from agent.orchestrator.agent import get_turn
+from web.history import load_history
 from web.status import get_status, reset_status, StatusHook
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -93,6 +94,11 @@ def chat(req: ChatRequest):
 @app.get("/api/status")
 def status(session_id: str):
     return {"status": get_status(session_id)}
+
+
+@app.get("/api/history")
+def history():
+    return {"predictions": load_history()}
 
 
 @app.post("/api/reset")
