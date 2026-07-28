@@ -308,6 +308,9 @@
     white-space: pre-wrap;
     word-wrap: break-word;
   }
+  .bubble p { margin: 0; }
+  .bubble p + p { margin-top: 0.5rem; }
+  .bubble .reasoning-list { margin-top: 0.45rem; }
   .row.user .bubble {
     background: var(--user-bubble);
     color: var(--user-text);
@@ -679,7 +682,12 @@ function addBubble(role, text) {
   row.className = "row " + role;
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+  // Same paragraph/bullet-list formatting as the trace popup's reasoning --
+  // a follow-up reply can carry the same dense inline-bulleted text
+  // ("... - Label: detail - Label: detail"). formatReasoning escapes every
+  // piece of text it inserts, so this is as safe as the textContent it
+  // replaces despite now using innerHTML.
+  bubble.innerHTML = formatReasoning(text);
   row.appendChild(bubble);
   log.appendChild(row);
   log.scrollTop = log.scrollHeight;
