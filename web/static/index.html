@@ -5,15 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MLB Contract Prediction Chat</title>
 <style>
+  /* "Scorebook" palette: pale sage ledger paper + ink navy, in the spirit of
+     an old scorecard, with pine green (grass) as the primary accent and a
+     dirt terracotta as a sparing secondary accent (stitching, bubble tabs,
+     the typing indicator) -- never the dominant color. */
   :root {
-    --bg: #faf9f7;
-    --panel: #ffffff;
-    --text: #1b1d1e;
-    --text-muted: #6b7280;
-    --border: #e6e3dd;
+    --bg: #eef2e7;
+    --panel: #fbfcf8;
+    --text: #1c2620;
+    --text-muted: #5c6b5f;
+    --border: #d7ddc9;
     --accent: #1f6f5c;
-    --assistant-bubble: #f0f1ef;
-    --assistant-text: #1b1d1e;
+    --accent-2: #c1652f;
+    --assistant-bubble: #fbfcf8;
+    --assistant-text: #1c2620;
     --user-bubble: var(--accent);
     --user-text: #ffffff;
     --error: #b3261e;
@@ -21,14 +26,15 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #121416;
-      --panel: #17191b;
-      --text: #ecedee;
-      --text-muted: #9aa0a6;
-      --border: #2a2d2f;
+      --bg: #10160f;
+      --panel: #171f16;
+      --text: #e9ede4;
+      --text-muted: #8fa389;
+      --border: #29352a;
       --accent: #3fa98a;
-      --assistant-bubble: #23262a;
-      --assistant-text: #ecedee;
+      --accent-2: #e08a52;
+      --assistant-bubble: #1c2419;
+      --assistant-text: #e9ede4;
       --user-bubble: var(--accent);
       --user-text: #08130f;
       --error: #ff8a80;
@@ -51,7 +57,7 @@
 
   header {
     padding: 1.1rem 1.5rem 0.9rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px dashed color-mix(in srgb, var(--accent-2) 55%, transparent);
     background: var(--panel);
   }
   header h1 {
@@ -98,11 +104,14 @@
     background: var(--user-bubble);
     color: var(--user-text);
     border-radius: 18px 18px 4px 18px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
   .row.assistant .bubble {
     background: var(--assistant-bubble);
     color: var(--assistant-text);
     border-radius: 18px 18px 18px 4px;
+    border-left: 3px solid var(--accent-2);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   }
   .row.assistant .bubble.error {
     background: var(--error-bubble);
@@ -128,7 +137,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--accent-2);
     animation: bounce 1.2s infinite ease-in-out;
   }
   .dots span:nth-child(2) { animation-delay: 0.15s; }
@@ -173,6 +182,13 @@
     background: var(--accent);
     color: var(--user-text);
     cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.05s ease;
+  }
+  button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 85%, black);
+  }
+  button:active:not(:disabled) {
+    transform: scale(0.97);
   }
   button:disabled {
     opacity: 0.5;
