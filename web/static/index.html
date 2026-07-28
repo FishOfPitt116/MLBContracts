@@ -23,6 +23,10 @@
     --user-text: #ffffff;
     --error: #b3261e;
     --error-bubble: #fbeae8;
+    /* Traffic-light confidence indicator (modal only): green/amber/red. */
+    --conf-high: var(--accent);
+    --conf-medium: #b3841e;
+    --conf-low: var(--error);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -39,6 +43,9 @@
       --user-text: #08130f;
       --error: #ff8a80;
       --error-bubble: #3a1f1d;
+      --conf-high: var(--accent);
+      --conf-medium: #e3b34c;
+      --conf-low: var(--error);
     }
   }
 
@@ -180,6 +187,12 @@
     font-size: 0.82rem;
     line-height: 1.4;
     background: var(--bg);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .history-item:hover, .history-item:focus-visible {
+    border-color: var(--accent-2);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   }
   .hi-top {
     display: flex;
@@ -389,6 +402,212 @@
     opacity: 0.5;
     cursor: default;
   }
+
+  /* Prediction detail popup: reasoning + citations for one sidebar entry. */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 14, 10, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 50;
+  }
+  .modal-backdrop.hidden { display: none; }
+
+  .modal {
+    background: var(--panel);
+    border-radius: 14px;
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+    animation: modalIn 0.18s ease-out;
+  }
+  @keyframes modalIn {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .modal { animation: none; }
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1.1rem 1.3rem 0.8rem;
+    border-bottom: 2px dashed color-mix(in srgb, var(--accent-2) 55%, transparent);
+    flex-shrink: 0;
+  }
+  .modal-header h3 {
+    margin: 0;
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  .modal-subtitle {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+  .modal-close {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { background: var(--bg); color: var(--text); }
+
+  .modal-body {
+    overflow-y: auto;
+    padding: 1.1rem 1.3rem 1.4rem;
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  /* Hero figures: AAV and duration are the headline, biggest text in the
+     popup. Total sits in the same row, set apart by a divider and pushed to
+     the right; everything else (range, confidence) is a smaller sub-item. */
+  .modal-hero {
+    display: flex;
+    align-items: stretch;
+    gap: 1.8rem;
+    margin-bottom: 0.7rem;
+  }
+  .hero-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    /* Equal auto margins split the flex row's free space evenly on both
+       sides, centering the line between the AAV/Years cluster and Total
+       (which then sits flush at the right edge with no space left for it). */
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .hero-total {
+    text-align: right;
+  }
+  .hero-value {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .hero-value.no-contract { font-size: 1.3rem; }
+  .hero-label {
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+  /* Range chart: aav_low--aav_high as a track, with a dot at the predicted
+     AAV's actual scaled position -- not just the two numbers as text. */
+  .range-chart {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0.5rem 0 1rem;
+  }
+  .range-endpoint {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .range-track {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+  /* The dot doubles as the confidence indicator: color is the traffic
+     light (green/amber/red) instead of a separate confidence bubble. */
+  .range-dot {
+    position: absolute;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    border: 2px solid var(--panel);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .range-dot.high { background: var(--conf-high); }
+  .range-dot.medium { background: var(--conf-medium); }
+  .range-dot.low { background: var(--conf-low); }
+  .confidence-label {
+    margin: -0.7rem 0 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: right;
+  }
+  .confidence-label.high { color: var(--conf-high); }
+  .confidence-label.medium { color: var(--conf-medium); }
+  .confidence-label.low { color: var(--conf-low); }
+  .modal-section-title {
+    margin: 1.1rem 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+  .modal-body p { margin: 0; }
+  .citation {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.55rem;
+  }
+  .citation-badge {
+    display: inline-block;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    margin-bottom: 0.35rem;
+  }
+  .citation-badge.tool {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+  }
+  .citation-badge.model_knowledge {
+    background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+    color: var(--text-muted);
+  }
+  .citation-claim { font-weight: 600; }
+  .citation-basis { color: var(--text-muted); margin-top: 0.2rem; font-size: 0.85rem; }
+  .citation-ref { color: var(--text-muted); margin-top: 0.3rem; font-size: 0.72rem; font-style: italic; }
+  .modal-meta {
+    margin-top: 1.2rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .modal-error { color: var(--error); }
 </style>
 </head>
 <body>
@@ -412,6 +631,19 @@
       <button type="submit">Send</button>
     </form>
   </main>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-header">
+      <div>
+        <h3 id="modal-title">—</h3>
+        <p class="modal-subtitle" id="modal-subtitle"></p>
+      </div>
+      <button class="modal-close" id="modal-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
 </div>
 
 <script>
@@ -449,12 +681,23 @@ function addBubble(role, text) {
 const historyList = document.getElementById("history-list");
 let knownRunIds = null; // null until the first successful load
 
+// Sub-$1M figures (pre-arb salaries are commonly $0.5-0.8M) read oddly as
+// "$0.5M" -- $XXXK matches how these are actually quoted/reported.
+function formatMoney(millions) {
+  const v = Number(millions);
+  if (Number.isNaN(v)) return "—";
+  if (Math.abs(v) < 1) {
+    return "$" + Math.round(v * 1000) + "K";
+  }
+  return "$" + v.toFixed(1) + "M";
+}
+
 function formatFigures(p) {
   if (p.no_contract === "True") return "No contract expected";
   const aav = parseFloat(p.predicted_aav);
   const dur = parseInt(p.predicted_duration, 10);
   if (Number.isNaN(aav) || Number.isNaN(dur)) return "—";
-  return "$" + aav.toFixed(1) + "M AAV · " + dur + (dur === 1 ? " yr" : " yrs");
+  return formatMoney(aav) + " AAV · " + dur + (dur === 1 ? " yr" : " yrs");
 }
 
 function formatDate(isoString) {
@@ -492,9 +735,150 @@ function renderHistory(predictions) {
       "  <span>·</span>" +
       "  <span>" + formatDate(p.run_date) + "</span>" +
       "</div>";
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
+    item.addEventListener("click", () => openTraceModal(p));
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openTraceModal(p);
+      }
+    });
     historyList.appendChild(item);
   }
   knownRunIds = nextKnown;
+}
+
+// --- Prediction detail popup: reasoning + citations for one sidebar entry. ---
+const modalBackdrop = document.getElementById("modal-backdrop");
+const modalTitle = document.getElementById("modal-title");
+const modalSubtitle = document.getElementById("modal-subtitle");
+const modalBody = document.getElementById("modal-body");
+const modalClose = document.getElementById("modal-close");
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text == null ? "" : String(text);
+  return div.innerHTML;
+}
+
+function closeModal() {
+  modalBackdrop.classList.add("hidden");
+  modalBody.innerHTML = "";
+}
+modalClose.addEventListener("click", closeModal);
+modalBackdrop.addEventListener("click", (e) => {
+  if (e.target === modalBackdrop) closeModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !modalBackdrop.classList.contains("hidden")) closeModal();
+});
+
+function renderCitation(c) {
+  const isTool = c.source_type === "tool";
+  const badgeClass = isTool ? "tool" : "model_knowledge";
+  const badgeLabel = isTool ? "Tool" : "Model knowledge";
+  let refLine = "";
+  if (isTool && c.tool_name) {
+    refLine =
+      '<div class="citation-ref">via ' + escapeHtml(c.tool_name) +
+      (c.tool_call_ref ? " (ref: " + escapeHtml(c.tool_call_ref) + ")" : "") +
+      "</div>";
+  }
+  return (
+    '<div class="citation">' +
+    '<span class="citation-badge ' + badgeClass + '">' + badgeLabel + "</span>" +
+    '<div class="citation-claim">' + escapeHtml(c.claim) + "</div>" +
+    '<div class="citation-basis">' + escapeHtml(c.basis) + "</div>" +
+    refLine +
+    "</div>"
+  );
+}
+
+async function openTraceModal(p) {
+  modalTitle.textContent = p.player_name || p.player_id;
+  modalSubtitle.textContent = p.target_year + " · " + (p.phase || "");
+  modalBody.innerHTML = '<p class="modal-loading">Loading full reasoning and citations…</p>';
+  modalBackdrop.classList.remove("hidden");
+  modalClose.focus();
+
+  try {
+    const resp = await fetch("/api/trace/" + encodeURIComponent(p.run_id));
+    if (!resp.ok) {
+      modalBody.innerHTML = '<p class="modal-error">Couldn’t load this prediction’s trace.</p>';
+      return;
+    }
+    const trace = await resp.json();
+    const out = trace.structured_output || {};
+    const res = trace.phase_resolution || {};
+
+    let heroHtml;
+    let rangeHtml = "";
+    if (out.no_contract) {
+      heroHtml = '<div class="modal-hero"><div><div class="hero-value no-contract">No contract expected</div></div></div>';
+    } else {
+      heroHtml =
+        '<div class="modal-hero">' +
+        '<div><div class="hero-value">' + formatMoney(out.aav_millions) + "</div>" +
+        '<div class="hero-label">AAV</div></div>' +
+        '<div><div class="hero-value">' + out.duration_years + "</div>" +
+        '<div class="hero-label">' + (out.duration_years === 1 ? "Year" : "Years") + "</div></div>" +
+        '<div class="hero-divider"></div>' +
+        '<div class="hero-total"><div class="hero-value">' + formatMoney(out.total_value_millions) + "</div>" +
+        '<div class="hero-label">Total</div></div>' +
+        "</div>";
+
+      // Range chart: a track from aav_low to aav_high with a dot at the
+      // predicted AAV's actual position in that range. The dot doubles as
+      // the confidence indicator -- its color is the traffic light
+      // (green/amber/red) instead of a separate confidence bubble.
+      const low = Number(out.aav_low_millions);
+      const high = Number(out.aav_high_millions);
+      const aav = Number(out.aav_millions);
+      let pct = 50;
+      if (high > low) {
+        pct = Math.max(0, Math.min(100, ((aav - low) / (high - low)) * 100));
+      }
+      const confClass = out.confidence ? String(out.confidence).toLowerCase() : "";
+      const confTitle = out.confidence ? " (" + out.confidence + " confidence)" : "";
+      rangeHtml =
+        '<div class="range-chart" title="Projected ' + formatMoney(aav) + " within range " +
+        formatMoney(low) + "–" + formatMoney(high) + confTitle + '">' +
+        '<span class="range-endpoint">' + formatMoney(low) + "</span>" +
+        '<div class="range-track"><div class="range-dot ' + confClass + '" style="left: ' + pct.toFixed(1) + '%;"></div></div>' +
+        '<span class="range-endpoint">' + formatMoney(high) + "</span>" +
+        "</div>" +
+        (out.confidence
+          ? '<div class="confidence-label ' + confClass + '">' + escapeHtml(out.confidence) + " confidence</div>"
+          : "");
+    }
+
+    const citations = out.citations || [];
+    const citationsHtml = citations.length
+      ? citations.map(renderCitation).join("")
+      : "<p>No citations recorded for this prediction.</p>";
+    const notesHtml = (res.notes || []).length
+      ? '<div class="modal-section-title">Phase resolution notes</div><p>' +
+        res.notes.map(escapeHtml).join("<br>") + "</p>"
+      : "";
+    const arithmeticHtml = trace.arithmetic_note
+      ? '<div class="modal-section-title">Arithmetic check</div><p>' + escapeHtml(trace.arithmetic_note) + "</p>"
+      : "";
+
+    modalBody.innerHTML =
+      heroHtml +
+      rangeHtml +
+      '<div class="modal-section-title">Reasoning</div>' +
+      "<p>" + escapeHtml(out.reasoning || "") + "</p>" +
+      notesHtml +
+      arithmeticHtml +
+      '<div class="modal-section-title">Citations (' + citations.length + ")</div>" +
+      citationsHtml +
+      '<div class="modal-meta">Run ' + formatDate(trace.run_date) + " · " + escapeHtml(trace.model_id) +
+      " · prompt " + escapeHtml(trace.prompt_version) + "</div>";
+  } catch (err) {
+    modalBody.innerHTML = '<p class="modal-error">Error loading trace: ' + escapeHtml(String(err)) + "</p>";
+  }
 }
 
 async function refreshHistory() {

@@ -36,6 +36,7 @@ from agent.config import DEFAULT_MODEL_ID
 from agent.orchestrator.agent import get_turn
 from web.history import load_history
 from web.status import get_status, reset_status, StatusHook
+from web.traces import load_trace_summary
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -99,6 +100,14 @@ def status(session_id: str):
 @app.get("/api/history")
 def history():
     return {"predictions": load_history()}
+
+
+@app.get("/api/trace/{run_id}")
+def trace_detail(run_id: str):
+    summary = load_trace_summary(run_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return summary
 
 
 @app.post("/api/reset")
