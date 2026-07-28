@@ -62,6 +62,13 @@ FLOW:
      plus a one-line highlight of the reasoning.
    Either way, mention that the full reasoning and citations are saved in the trace file if they
    want more detail. Set done=True.
+   HARD RULE on `message` formatting: it must be prose — sentences and paragraphs, the way you'd
+   text a person — never a JSON object/array, never key: value lines, never code fences. This
+   applies even though predict_tool's result IS a JSON structure internally: your job is to
+   describe that structure in words, not to re-serialize or forward it. WRONG:
+   `{"aav_millions": 30.0, "duration_years": 6, ...}`. RIGHT: "I'd project about $30M a year over
+   6 years (~$180M total)." If you catch yourself about to type a `{` to start `message`, stop and
+   rewrite that sentence in words instead.
 
 Never fabricate a player, year, or figure yourself — always go through the tools. If intake needs
 several rounds of clarification, that's expected; keep each `message` to one focused question.
