@@ -117,6 +117,19 @@ Consequence: any query filtering free-agent contracts by service time returns ze
 
 **Not yet investigated**: whether this is fixable (a different Spotrac field, or a computable proxy — e.g. debut year plus active-year count) or is a genuine gap in the source data that has to stay a known limitation.
 
+### `contracts_spotrac.csv`: club/player option years are never scraped — breaks phase resolution for affected players
+
+Discovered live (July 2026) via a real `make ask` request for Brandon Lowe's projected 2027 salary, which the agent answered as "pre-arb" — badly wrong. Lowe's real timeline (user-supplied ground truth) is pre-arb 2019-2021, arb 2022-2024, then two **accepted club options**: 2025 ($10.5M salary / $9.5M AAV, service time 6.058) and 2026 ($11.5M / $11.0M, service time 7.058) — he's several years past arbitration, not still in it.
+
+Two compounding bugs, one shallow and one structural:
+
+1. **`agent/phase.py` bug (not yet fixed)**: when the latest contract row on file has `service_time = -1` (unknown), `resolve_phase()`'s fallback just echoes that row's `type` forward with no bound — for Lowe, whose *last row with a real service_time* is years stale, this reads as "still pre-arb" indefinitely. `project_phase_timeline()` has the opposite failure mode in the same situation: it gives up and returns early with a caveat rather than projecting anything. Two fix directions were scoped (search backward for the nearest row with a real service_time and anchor the projection there; or surface explicit uncertainty instead of guessing) but neither is implemented yet.
+2. **Deeper, structural root cause**: `data_generation/spotrac.py` has **zero handling for club/player option contract rows** — confirmed via direct code inspection, not inference. The scraper only visits four bulk category-list URLs (pre-arb, arb, free-agent, extensions); it never visits per-player contract-detail pages, which is where option-year rows actually live on Spotrac. Lowe's real 2025/2026 rows are simply **absent** from `contracts_spotrac.csv` — not misclassified, not present-with-wrong-values, just missing entirely. No phase-resolution logic, however clever, can recover a contractual fact (an exercised option) that was never scraped in the first place.
+
+**This is likely bigger than a `phase.py` patch.** The shallow fix (a smarter fallback) is worth doing regardless — it improves behavior for *any* player with a stale service_time anchor, not just option-year cases — but it cannot fully solve Lowe's case, because the underlying row doesn't exist. Fixing that requires the scraper to actually collect option-year contract data, which likely means visiting per-player detail pages (a materially different scraping approach than the current four-bulk-list design) rather than a small patch. Whether that means *adding* per-player detail scraping alongside the existing bulk lists, or *restructuring* contract collection around per-player timelines entirely, is an open design question — flagged here as something to reconsider, not yet decided.
+
+**Not yet investigated**: how common option years are across the dataset (Lowe may not be an isolated case — any player with a multi-year deal containing option years likely has the same gap), and whether a cheaper interim signal (e.g. detecting the gap itself and flagging `method="unknown"` rather than guessing wrong) is worth doing before the full scraper fix.
+
 ### Arb Model Tier Accuracy Targets Not Met
 
 The ±10% per-tier tolerance at 95% is very aggressive. The best per-tier result is 39.9% vs. the 95% target. Root causes identified in the model docs:
@@ -160,14 +173,16 @@ In rough priority order (see the roadmap in `docs/agent/DESIGN.md`):
 
 2. **Finish the Phase 0 baseline** — **done** (July 27, 2026). A complete, non-degenerate seeded backtest is recorded above in section 2 (the first run was cut short at 13 predictions and had a schema gap that let a degenerate 0/0 prediction slip through; both are fixed now). Later phases compare against this.
 
-3. **Agent Phase 2** — Live data sourcing. **Comparable contracts — done** (July 27, 2026): `query_comparable_contracts` grounds comparable-contract facts and a player's own history in real records; see section 2 above for the baseline comparison and the no-lookahead fix. **Stats — done** (July 27, 2026): `query_batting_stats`/`query_pitching_stats` (live `statsapi.mlb.com`, not the stalled local CSVs) ground performance for both the target player and any comparable players, with the player-identity mapping problem solved via a `players.csv` fangraphs_id -> MLBAM id crosswalk. **Still open**: contract-data and player-identity live sourcing for `contracts_spotrac.csv`/`players.csv` themselves (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced).
+3. **Agent Phase 2** — Live data sourcing. **Comparable contracts — done** (July 27, 2026): `query_comparable_contracts` grounds comparable-contract facts and a player's own history in real records; see section 2 above for the baseline comparison and the no-lookahead fix. **Stats — done** (July 27, 2026): `query_batting_stats`/`query_pitching_stats` (live `statsapi.mlb.com`, not the stalled local CSVs) ground performance for both the target player and any comparable players, with the player-identity mapping problem solved via a `players.csv` fangraphs_id -> MLBAM id crosswalk. **Proposed, not yet built**: a market value references/trends tool (`query_market_value_trends`) returning percentile summaries (p90/max/min/median AAV) for a given year or year-range/phase/position, rather than individual comparable rows — see `docs/agent/DESIGN.md`'s Phase 2 Roadmap entry for the sketch. **Still open**: contract-data and player-identity live sourcing for `contracts_spotrac.csv`/`players.csv` themselves (no known public API for signed-contract dollar figures — Spotrac remains the source, likely fetched live/cached rather than replaced) — now entangled with the option-year gap below, since any live-sourcing spike should address both.
 
-4. **Agent Phase 3** — Multi-year forecasting: target-year ranges and user-supplied stat/context assumptions.
+4. **Fix the club/player option contract gap** — newly found (July 2026), see this doc's Open Issues above and `docs/agent/DESIGN.md` Design Decision #4's update. Two parts, likely two separate efforts: (a) a bounded/anchored fix to `agent/phase.py`'s unknown-service_time fallback (smaller, worth doing regardless of (b)), and (b) a scraper change so `data_generation/spotrac.py` actually captures option-year contract rows (larger — likely requires per-player detail-page scraping, not just a patch to the existing four-bulk-list approach). Not yet scheduled against the phase numbering below; flagged as high priority given it produces confidently wrong answers, not just missing data.
 
-5. **Agent Phase 4** — Comparable-contracts and CBA/arb-raise heuristic tools, business logic in the system prompt, team-conditioned scenario support and user guardrails.
+5. **Agent Phase 3** — Multi-year forecasting: target-year ranges and user-supplied stat/context assumptions.
 
-6. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
+6. **Agent Phase 4** — CBA/league-minimum schedule and arb-raise-pattern heuristic tools, business logic in the system prompt, team-conditioned scenario support and user guardrails.
 
-7. **Daily update workflow** — Revisit once Phase 2 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
+7. **Web application** — Serving layer + front end over the agent's predictions and history (unchanged, still furthest out).
+
+8. **Daily update workflow** — Revisit once Phase 2 makes projections respond to live stats; the workflow's stats-collection step is superseded by the live-tool decision above.
 
 Done: sklearn models (`models/`) and their design docs (`docs/pre_arb/`) archived to `archive/v3/` (July 2026); the unmerged `arb-model` branch stays a branch.

@@ -10,7 +10,9 @@ This README explains repository layout, how to install dependencies, how to run 
 - [Requirements & setup](#requirements--setup)
 - [Data collection](#data-collection)
 - [Analysis & visualization](#analysis--visualization)
+- [Contract prediction agent](#contract-prediction-agent)
 - [Troubleshooting & tips](#troubleshooting--tips)
+- [Current state & remaining work](#current-state--remaining-work)
 - [Archive](#archive)
 - [Contributing](#contributing)
 
@@ -18,11 +20,15 @@ This README explains repository layout, how to install dependencies, how to run 
 - Source data is primarily scraped/assembled into CSV datasets and then used for EDA, plotting, and simple ML experiments.
 - Analysis scripts generate plots under `analysis/graphs/`.
 - Scripts call small modules that implement analysis pipelines (e.g., arbitration, pre-arbitration, free agent analyses).
+- The active prediction system is an LLM agent (`agent/`, Strands SDK + OpenAI) that replaces the earlier sklearn regression models (archived under `archive/v3/`) — see [Contract prediction agent](#contract-prediction-agent) below and `docs/agent/DESIGN.md` for the full design.
 
 ## Repository layout (key files / dirs)
 - data_generation/ — scrapers and dataset assembly tools (spotrac, helpers, save/read utilities)
-- dataset/ — CSVs produced/consumed by analysis (e.g., `dataset/contracts_spotrac.csv`)
+- dataset/ — CSVs produced/consumed by analysis and the agent (e.g., `dataset/contracts_spotrac.csv`, `dataset/players.csv`, `dataset/mlbam_id_crosswalk.csv`)
 - analysis/ — plotting and analysis scripts (e.g., `analysis/contract_analysis.py`, analysis helpers, `analysis/graphs/`)
+- agent/ — LLM-based contract prediction agent (orchestrator/intake/predict sub-agents, phase resolution, backtest harness); see `docs/agent/DESIGN.md`
+- predictions/ — agent run artifacts: `traces/` (one JSON per prediction), `conversations/` (one JSON per `make ask` session), `history.csv` (append-only prediction log); gitignored (unbounded growth)
+- docs/ — `docs/agent/DESIGN.md` (agent design/roadmap) and `docs/PROJECT_STATE.md` (overall project status, open issues, what's next)
 - archive/ — previous repository versions and experiments (for historical reference only)
 - README.md — this file
 
@@ -93,6 +99,27 @@ This README explains repository layout, how to install dependencies, how to run 
   - If plots appear clipped, increase `plt.figure(figsize=(..., ...))` or adjust `plt.tight_layout()`.
   - Ensure `dataset/contracts_spotrac.csv` exists and is up to date before running analysis.
 
+## Contract prediction agent
+- The active prediction system is `agent/` — an LLM agent (Strands SDK + OpenAI, default model `gpt-5-mini`) that predicts contracts across all three cost-control phases (pre-arb, arbitration, free agency). It supersedes the sklearn models in `archive/v3/models/`.
+- Setup: requires `OPENAI_API_KEY` in a `.env` file at the repo root.
+- Usage:
+  ```bash
+  # Natural-language front door (recommended) — resolves player/year/mode, asks clarifying
+  # questions if ambiguous, and supports multi-turn follow-ups
+  make ask REQUEST="what will Scherzer make in 2026?"
+
+  # Direct flags, one prediction, no conversation
+  make predict PLAYER=Scherzer_5166 YEAR=2026
+
+  # Seeded backtest against historical contracts (5 samples per phase)
+  make backtest-agent
+
+  # Offline unit tests, no API key needed
+  make test-agent
+  ```
+- Every prediction persists a full trace (`predictions/traces/{run_id}.json`: prompts, tool calls, structured output, citations) and appends a row to `predictions/history.csv`. Every `make ask` conversation persists a linked transcript under `predictions/conversations/`.
+- The agent grounds its predictions with tools — `query_comparable_contracts` (real historical contract records) and `query_batting_stats`/`query_pitching_stats` (live `statsapi.mlb.com` performance data) — rather than relying solely on the model's training knowledge. See `docs/agent/DESIGN.md` for the full tool/architecture design and `docs/PROJECT_STATE.md` for current status and open issues.
+
 ## Archive
 - `archive/` contains earlier project snapshots and experimental code. These are preserved for reference only and are not part of the active pipeline. Do not modify files under `archive/` when working on the main pipeline.
 
@@ -112,6 +139,14 @@ This README explains repository layout, how to install dependencies, how to run 
   - Use `--overwrite` flag with spotrac scraper to force full re-fetch: `python -m data_generation.spotrac --start-year 2011 --end-year 2025 --overwrite`
 - **Plot files not appearing**: Confirm `analysis/contract_analysis.py` created `analysis/graphs/` (it does by default) and check file permissions.
 - **Reproducibility**: Use a virtual environment and pin dependencies in `requirements.txt`.
+
+## Current state & remaining work
+- The agent (Phase 0 baseline, Phase 1 natural-language front door, and Phase 2's comparable-contracts + live-stats tools) is implemented and covered by ~120 offline tests. Full status, baseline backtest numbers, and open issues live in `docs/PROJECT_STATE.md`; the design rationale and roadmap live in `docs/agent/DESIGN.md`.
+- Notable open items (see those two docs for detail):
+  - A dataset-completeness gap: `data_generation/spotrac.py` never scrapes club-option contract years, which breaks phase resolution for affected players (e.g. a player years into accepted club options is still read as "pre-arb") — may require rethinking how `contracts_spotrac.csv` is assembled, not just a small patch.
+  - No market-value distribution/percentile tool yet (e.g. "what's the p90/max/min AAV for a free-agent SP in a given year or across several years") — the agent currently only sees individual comparable contracts, not broader market context.
+  - Live sourcing for `contracts_spotrac.csv`/`players.csv` themselves (currently static, batch-scraped files) is still open.
+  - Multi-year forecasting (Phase 3) and team-conditioned scenario support / CBA & arb-raise heuristic tools (Phase 4) are designed but not yet built.
 
 ## Contributing
 - Open a PR with a clear description and tests for new behavior.
