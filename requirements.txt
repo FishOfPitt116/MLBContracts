@@ -1,5 +1,6 @@
 beautifulsoup4==4.13.3
 fastapi>=0.110.0
+jupyter>=1.0.0
 openai>=1.0.0
 pandas==2.2.2
 pybaseball==2.2.7
