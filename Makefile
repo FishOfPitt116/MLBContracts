@@ -7,7 +7,7 @@ CONTRACTS_DATASET_FILE = data_generation.spotrac
 STATS_DATASET_FILE = data_generation.stats
 ANALYSIS_FILE = analysis/contract_analysis.py
 
-.PHONY: dataset dataset-auto analyze review-queue join predict ask backtest-agent test-agent web
+.PHONY: dataset dataset-auto analyze review-queue join predict ask backtest-agent test-agent test-models web
 
 build: dataset
 
@@ -55,6 +55,9 @@ backtest-agent:
 
 test-agent:
 	$(PYTHON) -m pytest agent -q
+
+test-models:
+	$(PYTHON) -m pytest models -q
 
 # Basic local chat frontend over the orchestrator agent (see web/server.py).
 # Open http://localhost:8000/ once running.
